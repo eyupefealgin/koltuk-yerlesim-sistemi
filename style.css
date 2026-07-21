@@ -138,9 +138,8 @@ button{ font-family: inherit; cursor: pointer; }
 .brand-icon{ color: var(--primary-hover); display: inline-flex; filter: drop-shadow(0 0 8px rgba(234,179,8,.4)); }
 
 /* Role-based visibility, toggled via [data-role] on #appRoot.
-   admin-only: Yönetici only. staff-only: Yönetici + Satış (hidden from Misafir). */
+   admin-only: Yönetici only — hidden from both Misafir and Satış. */
 .app-root[data-role="guest"] .admin-only,
-.app-root[data-role="guest"] .staff-only{ display: none !important; }
 .app-root[data-role="sales"] .admin-only{ display: none !important; }
 
 /* Page layout */
