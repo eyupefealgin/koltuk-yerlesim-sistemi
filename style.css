@@ -137,8 +137,11 @@ button{ font-family: inherit; cursor: pointer; }
 }
 .brand-icon{ color: var(--primary-hover); display: inline-flex; filter: drop-shadow(0 0 8px rgba(234,179,8,.4)); }
 
-/* Admin-only visibility, toggled via [data-role] on #appRoot */
-.app-root[data-role="guest"] .admin-only{ display: none !important; }
+/* Role-based visibility, toggled via [data-role] on #appRoot.
+   admin-only: Yönetici only. staff-only: Yönetici + Satış (hidden from Misafir). */
+.app-root[data-role="guest"] .admin-only,
+.app-root[data-role="guest"] .staff-only{ display: none !important; }
+.app-root[data-role="sales"] .admin-only{ display: none !important; }
 
 /* Page layout */
 .page{
@@ -258,8 +261,6 @@ button{ font-family: inherit; cursor: pointer; }
 .tier-add-row input[type="text"]{ flex: 1 1 200px; }
 .tier-add-row input[type="number"]{ width: 100px; flex: 0 0 auto; }
 
-.sale-tier-buttons{ display: contents; }
-
 /* Buttons */
 .btn{
   border: none;
@@ -321,53 +322,7 @@ button{ font-family: inherit; cursor: pointer; }
 }
 .revenue-total span{ color: var(--text) !important; }
 .revenue-total span:last-child{ color: var(--primary-hover) !important; font-size: 1.05rem; }
-
-/* Mode tabs */
-.mode-tabs{ display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
-.mode-tab{
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
-  padding: 9px 18px;
-  border-radius: 999px;
-  font-size: .85rem;
-  font-weight: 600;
-  min-height: 40px;
-  transition: all .15s ease;
-}
-.mode-tab:hover{ border-color: var(--primary-hover); color: var(--primary-hover); }
-.mode-tab.is-active{ background: var(--primary); border-color: var(--primary); color: #1a1300; }
-
-/* Brush toolbar */
-.brush-toolbar{
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-.brush-toolbar-label{ font-size: .82rem; color: var(--text-muted); font-weight: 500; margin-right: 4px; }
-.brush-btn{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: .82rem;
-  font-weight: 600;
-  min-height: 36px;
-  transition: all .15s ease;
-}
-.brush-btn:hover{ border-color: var(--primary-hover); color: var(--primary-hover); }
-.brush-btn.is-active{ background: var(--text); border-color: var(--text); color: var(--bg); }
-.brush-btn.is-active .swatch{ border-color: rgba(255,255,255,.6); }
-#saleToolbar .brush-btn.is-active{ background: var(--sold); border-color: var(--sold-hover); color: #1a1300; }
-.brush-btn-clear:hover{ border-color: var(--female-border); color: var(--female); }
-.brush-btn-clear.is-active{ background: var(--female) !important; border-color: var(--female-border) !important; color: #fff !important; }
+#paymentBreakdown{ margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--border); }
 
 /* Screen curve ("PERDE") */
 .screen-curve{
@@ -436,7 +391,6 @@ button{ font-family: inherit; cursor: pointer; }
   line-height: 1;
   pointer-events: none;
 }
-.seat-grid.painting-mode .seat{ touch-action: none; user-select: none; }
 .seat-grid.guest-mode .seat{ cursor: default; }
 .seat-grid.guest-mode .seat:hover{ transform: none; box-shadow: none; }
 
@@ -458,6 +412,63 @@ button{ font-family: inherit; cursor: pointer; }
 }
 .toast[hidden]{ display: none; }
 @keyframes toast-in{ from{ opacity:0; transform:translate(-50%,8px);} to{ opacity:1; transform:translate(-50%,0);} }
+
+/* Seat modal (satış akışı: cinsiyet → bilet türü → ödeme) */
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(5,5,16,.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal-overlay[hidden]{ display: none; }
+.modal{
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.modal-close{
+  position: absolute;
+  top: 14px; right: 14px;
+  background: rgba(255,255,255,.06);
+  border: none;
+  color: var(--text);
+  width: 32px; height: 32px;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s ease;
+}
+.modal-close:hover{ background: rgba(255,255,255,.14); }
+.seat-modal h3{ margin: 0 0 20px; font-size: 1.15rem; }
+.modal-step-panel[hidden]{ display: none; }
+.modal-subhead{ font-size: .82rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 14px; }
+.modal-choice-row{ display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.choice-btn{
+  flex: 1 1 120px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  font-size: .92rem;
+  font-weight: 600;
+  min-height: 48px;
+  transition: all .15s ease;
+}
+.choice-btn:hover{ border-color: var(--primary-hover); color: var(--primary-hover); transform: translateY(-1px); }
+.choice-btn.choice-male:hover{ border-color: var(--male-border); color: var(--male); }
+.choice-btn.choice-female:hover{ border-color: var(--female-border); color: var(--female); }
+.modal-info-text{ color: var(--text-muted); font-size: .92rem; line-height: 1.6; margin: 0 0 20px; }
 
 /* Responsive */
 @media (max-width: 640px){

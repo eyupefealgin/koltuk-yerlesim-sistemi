@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'koltukYerlesim.state';
 const TIERS_KEY = 'koltukYerlesim.tiers';
-const STATES = ['empty', 'male', 'female'];
 
 // ===== Supabase (cross-device sync) =====
 const SUPABASE_URL = 'https://bkgcudklzrvkzodlqcij.supabase.co';
@@ -15,13 +14,6 @@ const supabaseClient = window.supabase
 let isApplyingRemote = false; // true while applying an incoming update, so we don't echo it straight back
 let pushTimer = null;
 
-const GENDER_HINTS = {
-  cycle: 'Bir koltuğa tıkla: Boş → Erkek → Kadın → Boş',
-  empty: 'Koltuklara tıkla veya sürükle: Boş olarak işaretle',
-  male: 'Koltuklara tıkla veya sürükle: Erkek olarak işaretle',
-  female: 'Koltuklara tıkla veya sürükle: Kadın olarak işaretle',
-};
-
 // Mutable — tiers can be added/removed/renamed/repriced by the user at runtime.
 let TICKET_TIERS = [
   { id: 'standart', label: 'Standart', price: 100 },
@@ -29,51 +21,58 @@ let TICKET_TIERS = [
   { id: 'ogrenci', label: 'Öğrenci', price: 60 },
 ];
 
-function saleHint(tierId){
-  if(tierId === 'clear') return 'Koltuklara tıkla veya sürükle: Satışı kaldır';
-  const tier = TICKET_TIERS.find(t => t.id === tierId);
-  return tier ? `Koltuklara tıkla veya sürükle: ${tier.label} bilet olarak sat (${tier.price}₺)` : '';
-}
-
 const ROLE_SESSION_KEY = 'koltukYerlesim.role';
-// Client-side gate only — not real security, just separates the "view" (misafir)
-// experience from the "edit" (yönetici) one. Anyone can read this in the source.
+// Client-side gate only — not real security, just separates the three
+// experiences (misafir/satış/yönetici). Anyone can read these in the source.
+const SALES_PASSWORD = 'satis123';
 const ADMIN_PASSWORD = 'yonetici123';
+let pendingLoginRole = null; // 'sales' | 'admin', while the password row is showing
 
 const loginGate = document.getElementById('loginGate');
 const appRoot = document.getElementById('appRoot');
 const guestLoginBtn = document.getElementById('guestLoginBtn');
+const salesLoginBtn = document.getElementById('salesLoginBtn');
 const adminLoginBtn = document.getElementById('adminLoginBtn');
-const adminPasswordRow = document.getElementById('adminPasswordRow');
-const adminPasswordInput = document.getElementById('adminPasswordInput');
-const adminPasswordSubmit = document.getElementById('adminPasswordSubmit');
+const passwordRow = document.getElementById('passwordRow');
+const passwordInput = document.getElementById('passwordInput');
+const passwordSubmit = document.getElementById('passwordSubmit');
 const loginError = document.getElementById('loginError');
 const roleBadge = document.getElementById('roleBadge');
 const logoutBtn = document.getElementById('logoutBtn');
 
-let currentRole = null; // 'guest' | 'admin'
+let currentRole = null; // 'guest' | 'sales' | 'admin'
 
 const colsInput = document.getElementById('colsInput');
 const rowsInput = document.getElementById('rowsInput');
 const totalPreview = document.getElementById('totalPreview');
 const seatGrid = document.getElementById('seatGrid');
 const gridHint = document.getElementById('gridHint');
-const genderToolbar = document.getElementById('genderToolbar');
-const saleToolbar = document.getElementById('saleToolbar');
 const tierListEl = document.getElementById('tierList');
-const saleTierButtonsEl = document.getElementById('saleTierButtons');
 const newTierNameInput = document.getElementById('newTierName');
 const newTierPriceInput = document.getElementById('newTierPrice');
 const revenueBreakdownEl = document.getElementById('revenueBreakdown');
+const paymentBreakdownEl = document.getElementById('paymentBreakdown');
+
+// Seat modal (satış akışı: cinsiyet → bilet türü → ödeme)
+const seatModalOverlay = document.getElementById('seatModalOverlay');
+const seatModalTitle = document.getElementById('seatModalTitle');
+const seatModalClose = document.getElementById('seatModalClose');
+const modalTierButtonsEl = document.getElementById('modalTierButtons');
+const modalInfoTextEl = document.getElementById('modalInfoText');
+const modalClearSeatBtn = document.getElementById('modalClearSeatBtn');
 
 let cols = 10;
 let rows = 8;
 let seatStates = [];
 let seatSales = [];
-let activeMode = 'gender'; // 'gender' | 'sale'
-let activeBrush = 'cycle';
-let activeSaleBrush = 'standart';
-let isPainting = false;
+
+let modalSeatIdx = null;
+let modalGender = null;
+let modalTier = null;
+
+function canEdit(){
+  return currentRole === 'admin' || currentRole === 'sales';
+}
 
 function clampDims(){
   cols = Math.min(40, Math.max(1, Number(colsInput.value) || 1));
@@ -145,21 +144,12 @@ function generateGrid(preserve){
   saveState();
 }
 
-function updatePaintingModeClass(){
-  const painting = activeMode === 'sale' || (activeMode === 'gender' && activeBrush !== 'cycle');
-  seatGrid.classList.toggle('painting-mode', painting);
-}
-
-function updateGridHint(){
-  gridHint.textContent = activeMode === 'gender' ? GENDER_HINTS[activeBrush] : saleHint(activeSaleBrush);
-}
-
 function renderGrid(){
   // Seats are direct grid children so CSS Grid wraps them into real rows —
   // wrapping them in per-row divs previously made every row a single grid
   // item, so all rows collapsed onto one visual line.
   seatGrid.style.gridTemplateColumns = `repeat(${cols}, auto)`;
-  updatePaintingModeClass();
+  seatGrid.classList.toggle('guest-mode', !canEdit());
   seatGrid.innerHTML = '';
 
   let seatNum = 0;
@@ -169,19 +159,9 @@ function renderGrid(){
       const btn = document.createElement('button');
       btn.type = 'button';
       renderSeatVisual(btn, idx);
-
-      btn.addEventListener('pointerdown', (e) => {
-        if(currentRole !== 'admin' || e.button !== 0) return;
-        isPainting = true;
-        applyAction(idx, btn);
+      btn.addEventListener('click', () => {
+        if(canEdit()) openSeatModal(idx);
       });
-      btn.addEventListener('pointerenter', () => {
-        if(currentRole === 'admin' && isPainting) applyAction(idx, btn);
-      });
-      btn.addEventListener('click', (e) => {
-        if(currentRole === 'admin' && e.detail === 0) applyAction(idx, btn);
-      });
-
       seatGrid.appendChild(btn);
       seatNum++;
     }
@@ -193,13 +173,17 @@ function labelFor(state){
   return state === 'male' ? 'Erkek' : state === 'female' ? 'Kadın' : 'Boş';
 }
 
+function paymentLabel(payment){
+  return payment === 'kart' ? 'Kart' : payment === 'nakit' ? 'Nakit' : null;
+}
+
 function seatAriaLabel(idx){
   const r = Math.floor(idx / cols) + 1;
   const c = (idx % cols) + 1;
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
   let label = `Koltuk ${r}-${c}, durum: ${labelFor(state)}`;
-  if(sale) label += `, satıldı: ${sale.label} ${sale.price}₺`;
+  if(sale) label += `, satıldı: ${sale.label} ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
   return label;
 }
 
@@ -220,47 +204,13 @@ function renderSeatVisual(btn, idx){
     badge.className = 'sold-badge';
     badge.textContent = '₺';
     btn.appendChild(badge);
-    btn.title = `${sale.label} — ${sale.price}₺`;
+    btn.title = `${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
   } else {
     btn.removeAttribute('title');
   }
 
   btn.setAttribute('aria-label', seatAriaLabel(idx));
 }
-
-function applyAction(idx, btn){
-  if(activeMode === 'gender') applyGenderBrush(idx, btn);
-  else applySaleBrush(idx, btn);
-}
-
-function applyGenderBrush(idx, btn){
-  if(activeBrush === 'cycle'){
-    const current = seatStates[idx] || 'empty';
-    seatStates[idx] = STATES[(STATES.indexOf(current) + 1) % STATES.length];
-  } else {
-    seatStates[idx] = activeBrush;
-  }
-  renderSeatVisual(btn, idx);
-  updateStats();
-  saveState();
-}
-
-function applySaleBrush(idx, btn){
-  if(!activeSaleBrush || activeSaleBrush === 'clear'){
-    seatSales[idx] = null;
-  } else {
-    const tier = TICKET_TIERS.find(t => t.id === activeSaleBrush);
-    // Snapshot label + price at sale time so later renaming/repricing/deleting
-    // a tier never changes what a seat was actually sold for.
-    seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price } : null;
-  }
-  renderSeatVisual(btn, idx);
-  updateStats();
-  saveState();
-}
-
-document.addEventListener('pointerup', () => { isPainting = false; });
-document.addEventListener('pointercancel', () => { isPainting = false; });
 
 function updateStats(){
   const total = seatStates.length;
@@ -280,32 +230,43 @@ function updateStats(){
   updateRevenueBreakdown(revenue);
 }
 
-// Per-tier breakdown (count sold + subtotal) plus the grand total ("Toplam Ciro").
-// Keyed by the snapshot label on each sale, not the live tier list, so a
-// renamed/deleted tier still shows up correctly under its original name.
+// Per-tier breakdown (count sold + subtotal) plus the grand total ("Toplam Ciro"),
+// and a second breakdown by payment method (Kart/Nakit). Both are keyed by the
+// snapshot on each sale, not the live tier list, so a renamed/deleted tier still
+// shows up correctly under its original name.
 function updateRevenueBreakdown(totalRevenue){
-  const breakdown = new Map();
-  TICKET_TIERS.forEach(t => breakdown.set(t.label, { count: 0, revenue: 0 }));
+  const byTier = new Map();
+  TICKET_TIERS.forEach(t => byTier.set(t.label, { count: 0, revenue: 0 }));
+  const byPayment = { kart: 0, nakit: 0 };
+
   seatSales.forEach(s => {
     if(!s) return;
-    if(!breakdown.has(s.label)) breakdown.set(s.label, { count: 0, revenue: 0 });
-    const entry = breakdown.get(s.label);
+    if(!byTier.has(s.label)) byTier.set(s.label, { count: 0, revenue: 0 });
+    const entry = byTier.get(s.label);
     entry.count++;
     entry.revenue += s.price;
+    if(s.payment === 'kart' || s.payment === 'nakit') byPayment[s.payment] += s.price;
   });
 
   revenueBreakdownEl.innerHTML = '';
-  breakdown.forEach((entry, label) => {
+  byTier.forEach((entry, label) => {
     const row = document.createElement('div');
     row.className = 'revenue-row';
     row.innerHTML = `<span>${label}</span><span>${entry.count} adet — ${entry.revenue} ₺</span>`;
     revenueBreakdownEl.appendChild(row);
   });
-
   const totalRow = document.createElement('div');
   totalRow.className = 'revenue-row revenue-total';
   totalRow.innerHTML = `<span>Toplam Ciro</span><span>${totalRevenue} ₺</span>`;
   revenueBreakdownEl.appendChild(totalRow);
+
+  paymentBreakdownEl.innerHTML = '';
+  [['Kart', byPayment.kart], ['Nakit', byPayment.nakit]].forEach(([label, amount]) => {
+    const row = document.createElement('div');
+    row.className = 'revenue-row';
+    row.innerHTML = `<span>${label}</span><span>${amount} ₺</span>`;
+    paymentBreakdownEl.appendChild(row);
+  });
 }
 
 function toast(msg){
@@ -344,67 +305,7 @@ document.getElementById('resetAllBtn').addEventListener('click', () => {
   toast('Tüm koltuklar sıfırlandı.');
 });
 
-document.getElementById('clearSalesBtn').addEventListener('click', () => {
-  seatSales = seatSales.map(() => null);
-  seatGrid.querySelectorAll('.seat').forEach((btn, idx) => renderSeatVisual(btn, idx));
-  updateStats();
-  saveState();
-  toast('Tüm satışlar temizlendi.');
-});
-
-document.querySelectorAll('.mode-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    activeMode = tab.dataset.mode;
-    document.querySelectorAll('.mode-tab').forEach(t => {
-      t.classList.toggle('is-active', t === tab);
-      t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-    });
-    genderToolbar.hidden = activeMode !== 'gender';
-    saleToolbar.hidden = activeMode !== 'sale';
-    updateGridHint();
-    updatePaintingModeClass();
-  });
-});
-
-document.querySelectorAll('#genderToolbar .brush-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    activeBrush = btn.dataset.brush;
-    document.querySelectorAll('#genderToolbar .brush-btn').forEach(b => b.classList.toggle('is-active', b === btn));
-    updateGridHint();
-    updatePaintingModeClass();
-  });
-});
-
-// Delegated so it keeps working after renderSaleTierButtons() rebuilds the
-// dynamic tier buttons (add/remove/edit a tier) — covers those plus the
-// static "Satışı Kaldır" button in one handler.
-saleToolbar.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-sale-tier]');
-  if(!btn) return;
-  activeSaleBrush = btn.dataset.saleTier;
-  saleToolbar.querySelectorAll('[data-sale-tier]').forEach(b => b.classList.toggle('is-active', b === btn));
-  updateGridHint();
-  updatePaintingModeClass();
-});
-
 // ===== Ticket tier management (add / remove / rename / reprice) =====
-
-function renderSaleTierButtons(){
-  if(!TICKET_TIERS.find(t => t.id === activeSaleBrush)){
-    activeSaleBrush = TICKET_TIERS[0] ? TICKET_TIERS[0].id : null;
-  }
-  saleTierButtonsEl.innerHTML = '';
-  TICKET_TIERS.forEach(tier => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `brush-btn${tier.id === activeSaleBrush ? ' is-active' : ''}`;
-    btn.dataset.saleTier = tier.id;
-    btn.textContent = `${tier.label} (${tier.price}₺)`;
-    saleTierButtonsEl.appendChild(btn);
-  });
-  updateGridHint();
-  updateStats();
-}
 
 function renderTierList(){
   tierListEl.innerHTML = '';
@@ -438,19 +339,16 @@ function renderTierList(){
     // seat-count field fix for why); price rounds/clamps on blur.
     nameInput.addEventListener('input', () => {
       tier.label = nameInput.value.trim() ? nameInput.value : tier.label;
-      renderSaleTierButtons();
       saveTiers();
     });
     priceInput.addEventListener('input', () => {
       const raw = Number(priceInput.value);
       tier.price = Number.isFinite(raw) && raw >= 0 ? raw : 0;
-      renderSaleTierButtons();
       saveTiers();
     });
     priceInput.addEventListener('blur', () => {
       tier.price = Math.max(0, Math.round(Number(priceInput.value) || 0));
       priceInput.value = tier.price;
-      renderSaleTierButtons();
       saveTiers();
     });
     delBtn.addEventListener('click', () => removeTier(tier.id));
@@ -476,7 +374,6 @@ function addTier(){
   newTierPriceInput.value = '';
 
   renderTierList();
-  renderSaleTierButtons();
   saveTiers();
   toast(`"${label}" bilet türü eklendi.`);
 }
@@ -490,7 +387,6 @@ function removeTier(tierId){
   TICKET_TIERS = TICKET_TIERS.filter(t => t.id !== tierId);
 
   renderTierList();
-  renderSaleTierButtons();
   saveTiers();
   toast(removed ? `"${removed.label}" bilet türü silindi.` : 'Bilet türü silindi.');
 }
@@ -505,10 +401,105 @@ document.getElementById('addTierBtn').addEventListener('click', addTier);
   });
 });
 
+// ===== Seat modal: cinsiyet → bilet türü → ödeme yöntemi =====
+
+function showModalPanel(name){
+  document.querySelectorAll('.modal-step-panel').forEach(p => p.hidden = p.dataset.panel !== name);
+}
+
+function renderModalTierButtons(){
+  modalTierButtonsEl.innerHTML = '';
+  TICKET_TIERS.forEach(tier => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'choice-btn';
+    btn.textContent = `${tier.label} (${tier.price}₺)`;
+    btn.addEventListener('click', () => {
+      modalTier = tier.id;
+      showModalPanel('payment');
+    });
+    modalTierButtonsEl.appendChild(btn);
+  });
+}
+
+function openSeatModal(idx){
+  modalSeatIdx = idx;
+  modalGender = null;
+  modalTier = null;
+
+  const r = Math.floor(idx / cols) + 1;
+  const c = (idx % cols) + 1;
+  seatModalTitle.textContent = `Koltuk ${r}-${c}`;
+
+  const state = seatStates[idx] || 'empty';
+  const sale = seatSales[idx];
+
+  if(state !== 'empty' || sale){
+    const parts = [`Cinsiyet: ${labelFor(state)}`];
+    if(sale) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
+    modalInfoTextEl.textContent = parts.join(' · ');
+    showModalPanel('info');
+  } else {
+    renderModalTierButtons();
+    showModalPanel('gender');
+  }
+
+  seatModalOverlay.hidden = false;
+}
+
+function closeSeatModal(){
+  seatModalOverlay.hidden = true;
+  modalSeatIdx = null;
+  modalGender = null;
+  modalTier = null;
+}
+
+function finalizeSeatSale(payment){
+  const idx = modalSeatIdx;
+  if(idx === null) return;
+
+  seatStates[idx] = modalGender;
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price, payment } : null;
+
+  renderSeatVisual(seatGrid.children[idx], idx);
+  updateStats();
+  saveState();
+  closeSeatModal();
+  toast('Koltuk kaydedildi.');
+}
+
+document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    modalGender = btn.dataset.gender;
+    showModalPanel('tier');
+  });
+});
+
+document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
+  btn.addEventListener('click', () => finalizeSeatSale(btn.dataset.payment));
+});
+
+modalClearSeatBtn.addEventListener('click', () => {
+  const idx = modalSeatIdx;
+  if(idx === null) return;
+  seatStates[idx] = 'empty';
+  seatSales[idx] = null;
+  renderSeatVisual(seatGrid.children[idx], idx);
+  updateStats();
+  saveState();
+  closeSeatModal();
+  toast('Koltuk boşaltıldı.');
+});
+
+seatModalClose.addEventListener('click', closeSeatModal);
+seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOverlay) closeSeatModal(); });
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && !seatModalOverlay.hidden) closeSeatModal(); });
+
 // ===== Cross-device sync (Supabase realtime) =====
 // One shared row (id=1) holds the whole venue: grid size, seat states/sales,
-// ticket tiers. Any admin write replaces it; every connected tab (guest or
-// admin) is subscribed and re-renders when it changes — that's how a seat
+// ticket tiers. Any write replaces it; every connected tab (guest, satış or
+// yönetici) is subscribed and re-renders when it changes — that's how a seat
 // picked on one computer shows up on another.
 
 function pushRemoteState(){
@@ -541,7 +532,6 @@ function applyRemotePayload(row){
   updateTotalPreview();
   renderGrid();
   renderTierList();
-  renderSaleTierButtons();
   saveState();
   saveTiers();
 
@@ -577,55 +567,60 @@ async function initRemoteSync(){
   }
 }
 
-// ===== Login / role gate (misafir vs yönetici) =====
+// ===== Login / role gate (misafir / satış / yönetici) =====
 
 function enterApp(role){
   currentRole = role;
   sessionStorage.setItem(ROLE_SESSION_KEY, role);
   appRoot.dataset.role = role;
-  roleBadge.textContent = role === 'admin' ? 'Yönetici' : 'Misafir';
-  seatGrid.classList.toggle('guest-mode', role !== 'admin');
+  roleBadge.textContent = role === 'admin' ? 'Yönetici' : role === 'sales' ? 'Satış' : 'Misafir';
+  seatGrid.classList.toggle('guest-mode', !canEdit());
   loginGate.hidden = true;
   appRoot.hidden = false;
 
-  if(role === 'guest'){
-    gridHint.textContent = 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
-  } else {
-    updateGridHint();
-  }
+  gridHint.textContent = canEdit()
+    ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
+    : 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
 }
 
 guestLoginBtn.addEventListener('click', () => enterApp('guest'));
 
-adminLoginBtn.addEventListener('click', () => {
-  adminPasswordRow.hidden = false;
-  adminPasswordInput.focus();
-});
+function showPasswordRow(role){
+  pendingLoginRole = role;
+  passwordRow.hidden = false;
+  loginError.hidden = true;
+  passwordInput.value = '';
+  passwordInput.focus();
+}
+salesLoginBtn.addEventListener('click', () => showPasswordRow('sales'));
+adminLoginBtn.addEventListener('click', () => showPasswordRow('admin'));
 
-function tryAdminLogin(){
-  if(adminPasswordInput.value === ADMIN_PASSWORD){
+function tryPasswordLogin(){
+  const expected = pendingLoginRole === 'admin' ? ADMIN_PASSWORD : SALES_PASSWORD;
+  if(passwordInput.value === expected){
     loginError.hidden = true;
-    adminPasswordInput.value = '';
-    enterApp('admin');
+    passwordInput.value = '';
+    enterApp(pendingLoginRole);
   } else {
     loginError.hidden = false;
   }
 }
-adminPasswordSubmit.addEventListener('click', tryAdminLogin);
-adminPasswordInput.addEventListener('keydown', (e) => {
+passwordSubmit.addEventListener('click', tryPasswordLogin);
+passwordInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){
     e.preventDefault();
-    tryAdminLogin();
+    tryPasswordLogin();
   }
 });
 
 logoutBtn.addEventListener('click', () => {
   sessionStorage.removeItem(ROLE_SESSION_KEY);
   currentRole = null;
+  pendingLoginRole = null;
   appRoot.hidden = true;
   loginGate.hidden = false;
-  adminPasswordRow.hidden = true;
-  adminPasswordInput.value = '';
+  passwordRow.hidden = true;
+  passwordInput.value = '';
   loginError.hidden = true;
 });
 
@@ -633,7 +628,6 @@ logoutBtn.addEventListener('click', () => {
 (function init(){
   loadTiers();
   renderTierList();
-  renderSaleTierButtons();
 
   const saved = loadState();
   if(saved && saved.cols && saved.rows && Array.isArray(saved.seatStates)){
@@ -653,7 +647,7 @@ logoutBtn.addEventListener('click', () => {
   }
 
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
-  if(existingRole === 'admin' || existingRole === 'guest') enterApp(existingRole);
+  if(existingRole === 'admin' || existingRole === 'sales' || existingRole === 'guest') enterApp(existingRole);
 
   initRemoteSync();
 })();

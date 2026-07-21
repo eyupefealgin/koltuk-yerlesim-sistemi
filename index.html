@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Koltuk Yerleşim Sistemi</title>
-<meta name="description" content="Sinema tarzı koltuk yerleşim ve bilet satış sistemi — misafir ve yönetici modlu, çoklu cihaz senkronizasyonlu.">
+<meta name="description" content="Sinema tarzı koltuk yerleşim ve bilet satış sistemi — misafir, satış ve yönetici rollü, çoklu cihaz senkronizasyonlu.">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -26,12 +26,13 @@
 
     <div class="login-actions">
       <button class="btn btn-gold" id="guestLoginBtn" type="button">Misafir Olarak Gir</button>
+      <button class="btn btn-ghost-gold" id="salesLoginBtn" type="button">Satış Girişi</button>
       <button class="btn btn-ghost-gold" id="adminLoginBtn" type="button">Yönetici Girişi</button>
     </div>
 
-    <div class="login-password-row" id="adminPasswordRow" hidden>
-      <input type="password" id="adminPasswordInput" placeholder="Yönetici şifresi" autocomplete="current-password">
-      <button class="btn btn-gold" id="adminPasswordSubmit" type="button">Giriş Yap</button>
+    <div class="login-password-row" id="passwordRow" hidden>
+      <input type="password" id="passwordInput" placeholder="Şifre" autocomplete="current-password">
+      <button class="btn btn-gold" id="passwordSubmit" type="button">Giriş Yap</button>
     </div>
     <p class="login-error" id="loginError" hidden>Hatalı şifre, tekrar dene.</p>
   </div>
@@ -110,37 +111,18 @@
       <div class="stat"><strong id="statFemale">0</strong><span>Kadın</span></div>
       <div class="stat"><strong id="statEmpty">0</strong><span>Boş</span></div>
       <div class="stat"><strong id="statSold">0</strong><span>Satılan</span></div>
-      <div class="stat admin-only"><strong id="statRevenue">0 ₺</strong><span>Gelir</span></div>
+      <div class="stat staff-only"><strong id="statRevenue">0 ₺</strong><span>Gelir</span></div>
     </div>
   </section>
 
-  <section class="panel revenue-panel admin-only">
+  <section class="panel revenue-panel staff-only">
     <h3 class="revenue-title">Ciro Özeti</h3>
     <div class="revenue-breakdown" id="revenueBreakdown"></div>
+    <div class="revenue-breakdown" id="paymentBreakdown"></div>
   </section>
 
   <section class="panel grid-panel">
-    <div class="mode-tabs admin-only" role="tablist" aria-label="Koltuk işlem modu">
-      <button class="mode-tab is-active" data-mode="gender" type="button" role="tab" aria-selected="true">Cinsiyet İşaretleme</button>
-      <button class="mode-tab" data-mode="sale" type="button" role="tab" aria-selected="false">Bilet Satışı</button>
-    </div>
-
-    <div class="brush-toolbar admin-only" id="genderToolbar" role="group" aria-label="Boyama modu">
-      <span class="brush-toolbar-label">Boyama Modu:</span>
-      <button class="brush-btn is-active" data-brush="cycle" type="button">Döngü</button>
-      <button class="brush-btn" data-brush="empty" type="button"><i class="swatch empty"></i> Boş</button>
-      <button class="brush-btn" data-brush="male" type="button"><i class="swatch male"></i> Erkek</button>
-      <button class="brush-btn" data-brush="female" type="button"><i class="swatch female"></i> Kadın</button>
-    </div>
-
-    <div class="brush-toolbar admin-only" id="saleToolbar" role="group" aria-label="Satış modu" hidden>
-      <span class="brush-toolbar-label">Bileti Sat:</span>
-      <div class="sale-tier-buttons" id="saleTierButtons"></div>
-      <button class="brush-btn brush-btn-clear" data-sale-tier="clear" type="button">Satışı Kaldır</button>
-      <button class="btn btn-ghost btn-sm" id="clearSalesBtn" type="button">Satışları Temizle</button>
-    </div>
-
-    <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: Boş → Erkek → Kadın → Boş</p>
+    <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç</p>
 
     <div class="screen-curve" aria-hidden="true"><span>PERDE</span></div>
     <div class="grid-scroll">
@@ -152,6 +134,45 @@
 
 <div class="toast" id="toast" hidden></div>
 
+</div>
+
+<!-- ============ SEAT MODAL (satış akışı) ============ -->
+<div class="modal-overlay" id="seatModalOverlay" hidden>
+  <div class="modal seat-modal" role="dialog" aria-modal="true" aria-labelledby="seatModalTitle">
+    <button class="modal-close" id="seatModalClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="seatModalTitle">Koltuk</h3>
+
+    <div class="modal-step-panel" data-panel="gender">
+      <p class="modal-subhead">1. Cinsiyet Seç</p>
+      <div class="modal-choice-row">
+        <button class="choice-btn choice-male" data-gender="male" type="button">Erkek</button>
+        <button class="choice-btn choice-female" data-gender="female" type="button">Kadın</button>
+      </div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="tier" hidden>
+      <p class="modal-subhead">2. Bilet Türü Seç</p>
+      <div class="modal-choice-row" id="modalTierButtons"></div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="payment" hidden>
+      <p class="modal-subhead">3. Ödeme Yöntemi</p>
+      <div class="modal-choice-row">
+        <button class="choice-btn" data-payment="kart" type="button">Kart</button>
+        <button class="choice-btn" data-payment="nakit" type="button">Nakit</button>
+      </div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="info" hidden>
+      <p class="modal-subhead">Koltuk Bilgisi</p>
+      <p class="modal-info-text" id="modalInfoText"></p>
+      <button class="btn btn-ghost-gold" id="modalClearSeatBtn" type="button">Koltuğu Boşalt</button>
+    </div>
+  </div>
 </div>
 
 <script src="supabase.min.js"></script>
