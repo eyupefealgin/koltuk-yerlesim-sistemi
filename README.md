@@ -1,5 +1,7 @@
 # Koltuk Yerleşim Sistemi
 
+https://eyupefealgin.github.io/koltuk-yerlesim-sistemi/
+
 Sinema tarzı koltuk yerleşim ve bilet satış sistemi. Misafir/Satış/Yönetici olmak üzere 3 rol var ve Supabase üzerinden **çoklu cihaz senkronizasyonu** ile çalışıyor — bir bilgisayarda yapılan değişiklik anında diğerlerinde de görünüyor.
 
 ## Özellikler
