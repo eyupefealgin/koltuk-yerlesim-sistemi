@@ -88,6 +88,17 @@
       <button class="preset-chip" data-cols="16" data-rows="12" type="button">16×12</button>
     </div>
 
+    <div class="venue-type-row">
+      <span class="ticket-prices-label">Etkinlik Türü:</span>
+      <div class="presets" id="venueTypeChips" role="group" aria-label="Etkinlik türü">
+        <button class="preset-chip" data-venue="sinema" type="button">Sinema</button>
+        <button class="preset-chip" data-venue="tiyatro" type="button">Tiyatro</button>
+        <button class="preset-chip" data-venue="konser" type="button">Konser / Etkinlik</button>
+        <button class="preset-chip" data-venue="futbol" type="button">Futbol Sahası</button>
+        <button class="preset-chip" data-venue="genel" type="button">Genel Etkinlik</button>
+      </div>
+    </div>
+
     <div class="ticket-prices">
       <span class="ticket-prices-label">Bilet Türleri ve Fiyatları:</span>
       <div class="tier-list" id="tierList"></div>
@@ -122,9 +133,17 @@
   </section>
 
   <section class="panel grid-panel">
+    <div class="bulk-toolbar editor-only" id="bulkToolbar">
+      <div class="bulk-mode-toggle" role="group" aria-label="Seçim modu">
+        <button class="mode-chip is-active" id="singleModeBtn" type="button">Tekli Seçim</button>
+        <button class="mode-chip" id="bulkModeBtn" type="button">Çoklu Seçim</button>
+      </div>
+      <button class="btn btn-gold btn-sm" id="startBulkSaleBtn" type="button" hidden>Satışa Başla (<span id="bulkCount">0</span>)</button>
+    </div>
+
     <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç</p>
 
-    <div class="screen-curve" aria-hidden="true"><span>PERDE</span></div>
+    <div class="screen-curve" id="screenAccent" aria-hidden="true"><span>PERDE</span></div>
     <div class="grid-scroll">
       <div class="seat-grid" id="seatGrid"></div>
     </div>

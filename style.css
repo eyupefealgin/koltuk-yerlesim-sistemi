@@ -138,9 +138,11 @@ button{ font-family: inherit; cursor: pointer; }
 .brand-icon{ color: var(--primary-hover); display: inline-flex; filter: drop-shadow(0 0 8px rgba(169,139,92,.3)); }
 
 /* Role-based visibility, toggled via [data-role] on #appRoot.
-   admin-only: Yönetici only — hidden from both Misafir and Satış. */
+   admin-only: Yönetici only — hidden from both Misafir and Satış.
+   editor-only: Yönetici + Satış — hidden only from Misafir. */
 .app-root[data-role="guest"] .admin-only,
 .app-root[data-role="sales"] .admin-only{ display: none !important; }
+.app-root[data-role="guest"] .editor-only{ display: none !important; }
 
 /* Page layout */
 .page{
@@ -195,6 +197,13 @@ button{ font-family: inherit; cursor: pointer; }
   min-height: 36px;
 }
 .preset-chip:hover{ border-color: var(--primary-hover); color: var(--primary-hover); }
+.preset-chip.is-active{ background: var(--primary); border-color: var(--primary); color: #33302A; }
+
+.venue-type-row{
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
 
 .ticket-prices{
   margin-top: 18px;
@@ -323,7 +332,7 @@ button{ font-family: inherit; cursor: pointer; }
 .revenue-total span:last-child{ color: var(--primary-hover) !important; font-size: 1.05rem; }
 #paymentBreakdown{ margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--border); }
 
-/* Screen curve ("PERDE") */
+/* Screen / stage / field accent — shape + label change with venue type */
 .screen-curve{
   height: 34px;
   margin: 0 auto 26px;
@@ -340,10 +349,54 @@ button{ font-family: inherit; cursor: pointer; }
   padding-top: 6px;
   box-shadow: 0 10px 30px -5px rgba(194,168,120,.28);
 }
+.screen-curve.oval{
+  height: 56px;
+  max-width: 300px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(122,155,110,.35), transparent);
+  border-top: 2px solid #6E8E5E;
+  color: #5F7D50;
+  box-shadow: 0 10px 30px -5px rgba(122,155,110,.3);
+  padding-top: 18px;
+}
+.screen-curve.flat{
+  height: 8px;
+  max-width: 320px;
+  border-radius: 999px;
+  background: var(--border);
+  border-top: none;
+  box-shadow: none;
+  padding-top: 16px;
+  color: var(--text-muted);
+}
+
+/* Bulk selection toolbar */
+.bulk-toolbar{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.bulk-mode-toggle{ display: flex; gap: 6px; }
+.mode-chip{
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: .82rem;
+  font-weight: 600;
+  min-height: 36px;
+  transition: all .15s ease;
+}
+.mode-chip:hover{ border-color: var(--primary-hover); color: var(--primary-hover); }
+.mode-chip.is-active{ background: var(--text); border-color: var(--text); color: var(--surface); }
 
 /* Grid panel */
 .grid-hint{ margin: 0 0 16px; font-size: .85rem; color: var(--text-muted); text-align: center; }
-.grid-scroll{ overflow-x: auto; padding-bottom: 6px; }
+.grid-scroll{ overflow-x: auto; padding-bottom: 6px; text-align: center; }
 .seat-grid{
   display: inline-grid;
   gap: 10px;
@@ -371,6 +424,7 @@ button{ font-family: inherit; cursor: pointer; }
 .seat.female{ background: var(--female); border-color: var(--female-border); color: #fff; }
 .seat.sold{ box-shadow: 0 0 0 2.5px var(--sold) inset; }
 .seat.sold:hover{ box-shadow: 0 0 0 2.5px var(--sold) inset, 0 6px 14px -4px rgba(0,0,0,.5); }
+.seat.bulk-selected{ box-shadow: 0 0 0 2.5px var(--male-border) inset, 0 0 0 5px rgba(90,121,160,.2); transform: translateY(-2px); }
 .seat-num{ pointer-events: none; }
 .sold-badge{
   position: absolute;

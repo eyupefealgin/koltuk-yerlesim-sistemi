@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'koltukYerlesim.state';
 const TIERS_KEY = 'koltukYerlesim.tiers';
+const VENUE_KEY = 'koltukYerlesim.venueType';
 
 // ===== Supabase (cross-device sync) =====
 const SUPABASE_URL = 'https://bkgcudklzrvkzodlqcij.supabase.co';
@@ -12,9 +13,13 @@ const supabaseClient = window.supabase
   : null;
 
 let isApplyingRemote = false; // true while applying an incoming update, so we don't echo it straight back
-let pushTimerSeats = null;
+let pushTimerSeatStates = null;
 let pushTimerLayout = null;
+let pushTimerVenueType = null;
+let pushTimerSalesData = null;
 let pushTimerTiers = null;
+let seatsSynced = false;
+let salesSynced = false;
 
 // Mutable — tiers can be added/removed/renamed/repriced by the user at runtime.
 let TICKET_TIERS = [
@@ -22,6 +27,15 @@ let TICKET_TIERS = [
   { id: 'vip', label: 'VIP', price: 250 },
   { id: 'ogrenci', label: 'Öğrenci', price: 60 },
 ];
+
+const VENUE_TYPES = {
+  sinema:  { label: 'Sinema', screenLabel: 'PERDE', shape: 'curve' },
+  tiyatro: { label: 'Tiyatro', screenLabel: 'SAHNE', shape: 'curve' },
+  konser:  { label: 'Konser / Etkinlik', screenLabel: 'SAHNE', shape: 'curve' },
+  futbol:  { label: 'Futbol Sahası', screenLabel: 'SAHA', shape: 'oval' },
+  genel:   { label: 'Genel Etkinlik', screenLabel: 'ALAN', shape: 'flat' },
+};
+let venueType = 'sinema';
 
 const ROLE_SESSION_KEY = 'koltukYerlesim.role';
 // Client-side gate only — not real security, just separates the three
@@ -49,11 +63,18 @@ const rowsInput = document.getElementById('rowsInput');
 const totalPreview = document.getElementById('totalPreview');
 const seatGrid = document.getElementById('seatGrid');
 const gridHint = document.getElementById('gridHint');
+const screenAccentEl = document.getElementById('screenAccent');
 const tierListEl = document.getElementById('tierList');
 const newTierNameInput = document.getElementById('newTierName');
 const newTierPriceInput = document.getElementById('newTierPrice');
 const revenueBreakdownEl = document.getElementById('revenueBreakdown');
 const paymentBreakdownEl = document.getElementById('paymentBreakdown');
+
+// Bulk selection toolbar
+const singleModeBtn = document.getElementById('singleModeBtn');
+const bulkModeBtn = document.getElementById('bulkModeBtn');
+const startBulkSaleBtn = document.getElementById('startBulkSaleBtn');
+const bulkCountEl = document.getElementById('bulkCount');
 
 // Seat modal (satış akışı: cinsiyet → bilet türü → ödeme)
 const seatModalOverlay = document.getElementById('seatModalOverlay');
@@ -68,7 +89,11 @@ let rows = 8;
 let seatStates = [];
 let seatSales = [];
 
-let modalSeatIdx = null;
+let bulkMode = false;
+let bulkSelected = new Set();
+
+let modalSeatIdx = null;      // single-seat flow
+let modalSeatIndices = null;  // bulk flow (array of indices)
 let modalGender = null;
 let modalTier = null;
 
@@ -123,6 +148,39 @@ function loadTiers(){
   }
 }
 
+function saveVenueType(){
+  localStorage.setItem(VENUE_KEY, venueType);
+  pushVenueType();
+}
+
+function loadVenueType(){
+  try {
+    const saved = localStorage.getItem(VENUE_KEY);
+    if(saved && VENUE_TYPES[saved]) venueType = saved;
+  } catch { /* ignore */ }
+}
+
+function renderVenueAccent(){
+  const cfg = VENUE_TYPES[venueType] || VENUE_TYPES.sinema;
+  screenAccentEl.className = `screen-curve${cfg.shape !== 'curve' ? ' ' + cfg.shape : ''}`;
+  screenAccentEl.querySelector('span').textContent = cfg.screenLabel;
+  document.querySelectorAll('#venueTypeChips .preset-chip').forEach(c => {
+    c.classList.toggle('is-active', c.dataset.venue === venueType);
+  });
+}
+
+// seatSales must always be the same length as seatStates for index alignment —
+// the two arrays are now stored in separate Supabase tables (seats vs sales)
+// and can briefly drift out of sync while both realtime updates arrive.
+function normalizeSalesLength(){
+  const total = seatStates.length;
+  if(seatSales.length !== total){
+    const next = new Array(total).fill(null);
+    for(let i = 0; i < Math.min(seatSales.length, total); i++) next[i] = seatSales[i];
+    seatSales = next;
+  }
+}
+
 function generateGrid(preserve){
   clampDims();
   const total = cols * rows;
@@ -143,7 +201,8 @@ function generateGrid(preserve){
 
   renderGrid();
   saveState();
-  pushLayout(); // cols/rows actually changed here — the only place that needs to
+  pushLayout();     // cols/rows/seat_states → seats table
+  pushSalesData();  // seat_sales reset too → sales table
 }
 
 function renderGrid(){
@@ -152,6 +211,7 @@ function renderGrid(){
   // item, so all rows collapsed onto one visual line.
   seatGrid.style.gridTemplateColumns = `repeat(${cols}, auto)`;
   seatGrid.classList.toggle('guest-mode', !canEdit());
+  normalizeSalesLength();
   seatGrid.innerHTML = '';
 
   let seatNum = 0;
@@ -161,9 +221,8 @@ function renderGrid(){
       const btn = document.createElement('button');
       btn.type = 'button';
       renderSeatVisual(btn, idx);
-      btn.addEventListener('click', () => {
-        if(canEdit()) openSeatModal(idx);
-      });
+      if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
+      btn.addEventListener('click', () => handleSeatClick(idx, btn));
       seatGrid.appendChild(btn);
       seatNum++;
     }
@@ -171,12 +230,81 @@ function renderGrid(){
   updateStats();
 }
 
+function handleSeatClick(idx, btn){
+  if(!canEdit()) return;
+
+  if(bulkMode){
+    const state = seatStates[idx] || 'empty';
+    if(state !== 'empty' || seatSales[idx]){
+      toast('Bu koltuk dolu — toplu satış için boş koltuk seç.');
+      return;
+    }
+    if(bulkSelected.has(idx)){
+      bulkSelected.delete(idx);
+      btn.classList.remove('bulk-selected');
+    } else {
+      bulkSelected.add(idx);
+      btn.classList.add('bulk-selected');
+    }
+    updateBulkToolbar();
+  } else {
+    openSeatModal(idx);
+  }
+}
+
+function updateBulkToolbar(){
+  bulkCountEl.textContent = bulkSelected.size;
+  startBulkSaleBtn.hidden = bulkSelected.size === 0;
+}
+
+function setBulkMode(on){
+  bulkMode = on;
+  singleModeBtn.classList.toggle('is-active', !on);
+  bulkModeBtn.classList.toggle('is-active', on);
+  if(!on){
+    bulkSelected.forEach(i => {
+      const btn = seatGrid.children[i];
+      if(btn) btn.classList.remove('bulk-selected');
+    });
+    bulkSelected.clear();
+    updateBulkToolbar();
+  }
+}
+
+singleModeBtn.addEventListener('click', () => setBulkMode(false));
+bulkModeBtn.addEventListener('click', () => setBulkMode(true));
+
+startBulkSaleBtn.addEventListener('click', () => {
+  if(bulkSelected.size === 0) return;
+  modalSeatIndices = [...bulkSelected];
+  modalSeatIdx = null;
+  modalGender = null;
+  modalTier = null;
+  seatModalTitle.textContent = `${modalSeatIndices.length} Koltuk`;
+  renderModalTierButtons();
+  showModalPanel('gender');
+  seatModalOverlay.hidden = false;
+});
+
 function labelFor(state){
   return state === 'male' ? 'Erkek' : state === 'female' ? 'Kadın' : 'Boş';
 }
 
 function paymentLabel(payment){
   return payment === 'kart' ? 'Kart' : payment === 'nakit' ? 'Nakit' : null;
+}
+
+// Same-row immediate left/right neighbor check. Warns (doesn't block) when a
+// gender assignment would put opposite genders directly side by side.
+function findAdjacencyConflict(idx, gender){
+  const col = idx % cols;
+  const neighbors = [];
+  if(col > 0) neighbors.push(idx - 1);
+  if(col < cols - 1) neighbors.push(idx + 1);
+  return neighbors.some(n => {
+    const st = seatStates[n];
+    return st && st !== 'empty' && st !== gender;
+  });
 }
 
 function seatAriaLabel(idx){
@@ -289,7 +417,7 @@ rowsInput.addEventListener('input', livePreviewTotal);
 colsInput.addEventListener('blur', updateTotalPreview);
 rowsInput.addEventListener('blur', updateTotalPreview);
 
-document.querySelectorAll('.preset-chip').forEach(chip => {
+document.querySelectorAll('.preset-chip[data-cols]').forEach(chip => {
   chip.addEventListener('click', () => {
     colsInput.value = chip.dataset.cols;
     rowsInput.value = chip.dataset.rows;
@@ -299,12 +427,22 @@ document.querySelectorAll('.preset-chip').forEach(chip => {
   });
 });
 
+document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    venueType = chip.dataset.venue;
+    renderVenueAccent();
+    saveVenueType();
+    toast(`Etkinlik türü: ${VENUE_TYPES[venueType].label}`);
+  });
+});
+
 document.getElementById('resetAllBtn').addEventListener('click', () => {
   seatStates = seatStates.map(() => 'empty');
   seatSales = seatSales.map(() => null);
   renderGrid();
   saveState();
-  pushSeatData();
+  pushSeatStates();
+  pushSalesData();
   toast('Tüm koltuklar sıfırlandı.');
 });
 
@@ -427,6 +565,7 @@ function renderModalTierButtons(){
 
 function openSeatModal(idx){
   modalSeatIdx = idx;
+  modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
 
@@ -453,29 +592,20 @@ function openSeatModal(idx){
 function closeSeatModal(){
   seatModalOverlay.hidden = true;
   modalSeatIdx = null;
+  modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
-}
-
-function finalizeSeatSale(payment){
-  const idx = modalSeatIdx;
-  if(idx === null) return;
-
-  seatStates[idx] = modalGender;
-  const tier = TICKET_TIERS.find(t => t.id === modalTier);
-  seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price, payment } : null;
-
-  renderSeatVisual(seatGrid.children[idx], idx);
-  updateStats();
-  saveState();
-  pushSeatData();
-  closeSeatModal();
-  toast('Koltuk kaydedildi.');
 }
 
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
   btn.addEventListener('click', () => {
     modalGender = btn.dataset.gender;
+
+    const targets = modalSeatIndices && modalSeatIndices.length ? modalSeatIndices : [modalSeatIdx];
+    const conflicts = targets.filter(i => findAdjacencyConflict(i, modalGender)).length;
+    if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
+    else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
+
     showModalPanel('tier');
   });
 });
@@ -483,6 +613,37 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
   btn.addEventListener('click', () => finalizeSeatSale(btn.dataset.payment));
 });
+
+function finalizeSeatSale(payment){
+  const targets = modalSeatIndices && modalSeatIndices.length
+    ? modalSeatIndices
+    : (modalSeatIdx !== null ? [modalSeatIdx] : []);
+  if(!targets.length) return;
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  targets.forEach(idx => {
+    seatStates[idx] = modalGender;
+    seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price, payment } : null;
+    renderSeatVisual(seatGrid.children[idx], idx);
+  });
+
+  updateStats();
+  saveState();
+  pushSeatStates();
+  pushSalesData();
+
+  const wasBulk = targets.length > 1;
+  closeSeatModal();
+
+  if(wasBulk){
+    bulkSelected.clear();
+    updateBulkToolbar();
+    setBulkMode(false);
+    toast(`${targets.length} koltuk kaydedildi.`);
+  } else {
+    toast('Koltuk kaydedildi.');
+  }
+}
 
 modalClearSeatBtn.addEventListener('click', () => {
   const idx = modalSeatIdx;
@@ -492,7 +653,8 @@ modalClearSeatBtn.addEventListener('click', () => {
   renderSeatVisual(seatGrid.children[idx], idx);
   updateStats();
   saveState();
-  pushSeatData();
+  pushSeatStates();
+  pushSalesData();
   closeSeatModal();
   toast('Koltuk boşaltıldı.');
 });
@@ -502,26 +664,22 @@ seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOve
 document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && !seatModalOverlay.hidden) closeSeatModal(); });
 
 // ===== Cross-device sync (Supabase realtime) =====
-// One shared row (id=1) holds the whole venue: grid size, seat states/sales,
-// ticket tiers. Any write replaces it; every connected tab (guest, satış or
-// yönetici) is subscribed and re-renders when it changes — that's how a seat
-// picked on one computer shows up on another.
+// Split into two tables on purpose:
+//   seats  — cols/rows/seat_states/venue_type — occupancy only, no pricing.
+//   sales  — seat_sales/tiers — prices, tiers, payment method.
+// Misafir only ever fetches/subscribes to `seats`, so ticket prices and
+// payment details never reach a guest's browser at all (not just hidden in
+// the UI — never sent over the wire). Satış/Yönetici sync both tables.
 
-// Three separate partial updates instead of one big "send everything" write.
-// Otherwise an unrelated action on one device (marking a seat, repricing a
-// tier) would resend that device's own possibly-stale cols/rows and silently
-// undo a layout change another device just made — each push here only
-// touches the column(s) that action actually changed.
-function pushSeatData(){
+function pushSeatStates(){
   if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimerSeats);
-  pushTimerSeats = setTimeout(async () => {
-    const { error } = await supabaseClient.from('venue_state').update({
+  clearTimeout(pushTimerSeatStates);
+  pushTimerSeatStates = setTimeout(async () => {
+    const { error } = await supabaseClient.from('seats').update({
       seat_states: seatStates,
-      seat_sales: seatSales,
       updated_at: new Date().toISOString(),
     }).eq('id', 1);
-    if(error) console.warn('Supabase güncelleme hatası:', error.message);
+    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
   }, 400);
 }
 
@@ -529,13 +687,37 @@ function pushLayout(){
   if(!supabaseClient || isApplyingRemote) return;
   clearTimeout(pushTimerLayout);
   pushTimerLayout = setTimeout(async () => {
-    const { error } = await supabaseClient.from('venue_state').update({
+    const { error } = await supabaseClient.from('seats').update({
       cols, rows,
       seat_states: seatStates,
+      venue_type: venueType,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushVenueType(){
+  if(!supabaseClient || isApplyingRemote) return;
+  clearTimeout(pushTimerVenueType);
+  pushTimerVenueType = setTimeout(async () => {
+    const { error } = await supabaseClient.from('seats').update({
+      venue_type: venueType,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushSalesData(){
+  if(!supabaseClient || isApplyingRemote || !canEdit()) return;
+  clearTimeout(pushTimerSalesData);
+  pushTimerSalesData = setTimeout(async () => {
+    const { error } = await supabaseClient.from('sales').update({
       seat_sales: seatSales,
       updated_at: new Date().toISOString(),
     }).eq('id', 1);
-    if(error) console.warn('Supabase güncelleme hatası:', error.message);
+    if(error) console.warn('Supabase (sales) güncelleme hatası:', error.message);
   }, 400);
 }
 
@@ -543,61 +725,107 @@ function pushTiers(){
   if(!supabaseClient || isApplyingRemote) return;
   clearTimeout(pushTimerTiers);
   pushTimerTiers = setTimeout(async () => {
-    const { error } = await supabaseClient.from('venue_state').update({
+    const { error } = await supabaseClient.from('sales').update({
       tiers: TICKET_TIERS,
       updated_at: new Date().toISOString(),
     }).eq('id', 1);
-    if(error) console.warn('Supabase güncelleme hatası:', error.message);
+    if(error) console.warn('Supabase (sales) güncelleme hatası:', error.message);
   }, 400);
 }
 
-function applyRemotePayload(row){
+function applySeatsPayload(row){
   if(!row) return;
   isApplyingRemote = true;
 
   cols = row.cols;
   rows = row.rows;
   seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
-  seatSales = Array.isArray(row.seat_sales) ? row.seat_sales : [];
-  if(Array.isArray(row.tiers) && row.tiers.length) TICKET_TIERS = row.tiers;
+  if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
+  normalizeSalesLength();
 
   colsInput.value = cols;
   rowsInput.value = rows;
   updateTotalPreview();
+  renderVenueAccent();
   renderGrid();
-  renderTierList();
   saveState();
-  saveTiers();
+  localStorage.setItem(VENUE_KEY, venueType);
 
   isApplyingRemote = false;
 }
 
-function subscribeRealtime(){
+function applySalesPayload(row){
+  if(!row) return;
+  isApplyingRemote = true;
+
+  seatSales = Array.isArray(row.seat_sales) ? row.seat_sales : [];
+  normalizeSalesLength();
+  if(Array.isArray(row.tiers) && row.tiers.length) TICKET_TIERS = row.tiers;
+
+  renderGrid();
+  renderTierList();
+  saveState();
+  localStorage.setItem(TIERS_KEY, JSON.stringify(TICKET_TIERS));
+
+  isApplyingRemote = false;
+}
+
+function subscribeSeatsRealtime(){
   supabaseClient
-    .channel('venue_state_changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'venue_state', filter: 'id=eq.1' },
-      (payload) => applyRemotePayload(payload.new))
+    .channel('seats_changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seats', filter: 'id=eq.1' },
+      (payload) => applySeatsPayload(payload.new))
     .subscribe();
 }
 
-async function initRemoteSync(){
-  if(!supabaseClient) return;
+function subscribeSalesRealtime(){
+  supabaseClient
+    .channel('sales_changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sales', filter: 'id=eq.1' },
+      (payload) => applySalesPayload(payload.new))
+    .subscribe();
+}
+
+async function ensureSeatsSync(){
+  if(seatsSynced || !supabaseClient) return;
+  seatsSynced = true;
   try {
-    const { data, error } = await supabaseClient.from('venue_state').select('*').eq('id', 1).maybeSingle();
+    const { data, error } = await supabaseClient.from('seats').select('*').eq('id', 1).maybeSingle();
     if(error) throw error;
 
     if(!data){
-      await supabaseClient.from('venue_state').insert({
-        id: 1, cols, rows, seat_states: seatStates, seat_sales: seatSales, tiers: TICKET_TIERS,
+      await supabaseClient.from('seats').insert({
+        id: 1, cols, rows, seat_states: seatStates, venue_type: venueType,
       });
     } else {
-      applyRemotePayload(data);
+      applySeatsPayload(data);
     }
 
-    subscribeRealtime();
+    subscribeSeatsRealtime();
   } catch(err){
-    console.warn('Supabase bağlantısı kurulamadı, yerel modda devam ediliyor.', err);
+    console.warn('Supabase (seats) bağlantısı kurulamadı, yerel modda devam ediliyor.', err);
     toast('Buluta bağlanılamadı — yerel modda çalışılıyor.');
+  }
+}
+
+async function ensureSalesSync(){
+  if(salesSynced || !supabaseClient) return;
+  salesSynced = true;
+  try {
+    const { data, error } = await supabaseClient.from('sales').select('*').eq('id', 1).maybeSingle();
+    if(error) throw error;
+
+    if(!data){
+      await supabaseClient.from('sales').insert({
+        id: 1, seat_sales: seatSales, tiers: TICKET_TIERS,
+      });
+    } else {
+      applySalesPayload(data);
+    }
+
+    subscribeSalesRealtime();
+  } catch(err){
+    console.warn('Supabase (sales) bağlantısı kurulamadı.', err);
   }
 }
 
@@ -615,6 +843,9 @@ function enterApp(role){
   gridHint.textContent = canEdit()
     ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
     : 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
+
+  ensureSeatsSync();
+  if(canEdit()) ensureSalesSync();
 }
 
 guestLoginBtn.addEventListener('click', () => enterApp('guest'));
@@ -656,12 +887,14 @@ logoutBtn.addEventListener('click', () => {
   passwordRow.hidden = true;
   passwordInput.value = '';
   loginError.hidden = true;
+  setBulkMode(false);
 });
 
 // Init: restore previous session or default grid
 (function init(){
   loadTiers();
   renderTierList();
+  loadVenueType();
 
   const saved = loadState();
   if(saved && saved.cols && saved.rows && Array.isArray(saved.seatStates)){
@@ -674,14 +907,14 @@ logoutBtn.addEventListener('click', () => {
     colsInput.value = cols;
     rowsInput.value = rows;
     updateTotalPreview();
+    renderVenueAccent();
     renderGrid();
   } else {
     updateTotalPreview();
+    renderVenueAccent();
     generateGrid(false);
   }
 
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
   if(existingRole === 'admin' || existingRole === 'sales' || existingRole === 'guest') enterApp(existingRole);
-
-  initRemoteSync();
 })();
