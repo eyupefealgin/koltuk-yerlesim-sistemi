@@ -12,7 +12,9 @@ const supabaseClient = window.supabase
   : null;
 
 let isApplyingRemote = false; // true while applying an incoming update, so we don't echo it straight back
-let pushTimer = null;
+let pushTimerSeats = null;
+let pushTimerLayout = null;
+let pushTimerTiers = null;
 
 // Mutable — tiers can be added/removed/renamed/repriced by the user at runtime.
 let TICKET_TIERS = [
@@ -97,7 +99,6 @@ function livePreviewTotal(){
 
 function saveState(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ cols, rows, seatStates, seatSales }));
-  pushRemoteState();
 }
 
 function loadState(){
@@ -107,7 +108,7 @@ function loadState(){
 
 function saveTiers(){
   localStorage.setItem(TIERS_KEY, JSON.stringify(TICKET_TIERS));
-  pushRemoteState();
+  pushTiers();
 }
 
 function loadTiers(){
@@ -142,6 +143,7 @@ function generateGrid(preserve){
 
   renderGrid();
   saveState();
+  pushLayout(); // cols/rows actually changed here — the only place that needs to
 }
 
 function renderGrid(){
@@ -302,6 +304,7 @@ document.getElementById('resetAllBtn').addEventListener('click', () => {
   seatSales = seatSales.map(() => null);
   renderGrid();
   saveState();
+  pushSeatData();
   toast('Tüm koltuklar sıfırlandı.');
 });
 
@@ -465,6 +468,7 @@ function finalizeSeatSale(payment){
   renderSeatVisual(seatGrid.children[idx], idx);
   updateStats();
   saveState();
+  pushSeatData();
   closeSeatModal();
   toast('Koltuk kaydedildi.');
 }
@@ -488,6 +492,7 @@ modalClearSeatBtn.addEventListener('click', () => {
   renderSeatVisual(seatGrid.children[idx], idx);
   updateStats();
   saveState();
+  pushSeatData();
   closeSeatModal();
   toast('Koltuk boşaltıldı.');
 });
@@ -502,14 +507,43 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && !seatModa
 // yönetici) is subscribed and re-renders when it changes — that's how a seat
 // picked on one computer shows up on another.
 
-function pushRemoteState(){
+// Three separate partial updates instead of one big "send everything" write.
+// Otherwise an unrelated action on one device (marking a seat, repricing a
+// tier) would resend that device's own possibly-stale cols/rows and silently
+// undo a layout change another device just made — each push here only
+// touches the column(s) that action actually changed.
+function pushSeatData(){
   if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
+  clearTimeout(pushTimerSeats);
+  pushTimerSeats = setTimeout(async () => {
+    const { error } = await supabaseClient.from('venue_state').update({
+      seat_states: seatStates,
+      seat_sales: seatSales,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+    if(error) console.warn('Supabase güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushLayout(){
+  if(!supabaseClient || isApplyingRemote) return;
+  clearTimeout(pushTimerLayout);
+  pushTimerLayout = setTimeout(async () => {
     const { error } = await supabaseClient.from('venue_state').update({
       cols, rows,
       seat_states: seatStates,
       seat_sales: seatSales,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+    if(error) console.warn('Supabase güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushTiers(){
+  if(!supabaseClient || isApplyingRemote) return;
+  clearTimeout(pushTimerTiers);
+  pushTimerTiers = setTimeout(async () => {
+    const { error } = await supabaseClient.from('venue_state').update({
       tiers: TICKET_TIERS,
       updated_at: new Date().toISOString(),
     }).eq('id', 1);
