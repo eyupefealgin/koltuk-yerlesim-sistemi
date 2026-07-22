@@ -1,25 +1,25 @@
 :root{
-  --bg: #0b0b1d;
-  --bg-glow: #1a1750;
-  --surface: #16143a;
-  --surface-2: #1E1B4B;
-  --border: #2c2a5c;
-  --text: #F8FAFC;
-  --text-muted: #A1A1C2;
-  --primary: #CA8A04;
-  --primary-hover: #EAB308;
-  --male: #3B82F6;
-  --male-border: #2563EB;
-  --female: #EF4444;
-  --female-border: #DC2626;
-  --empty: #F8FAFC;
-  --empty-border: #4b4880;
-  --sold: #EAB308;
-  --sold-hover: #CA8A04;
+  --bg: #F3ECE0;
+  --bg-glow: #FBF6EE;
+  --surface: #FFFDF9;
+  --surface-2: #F7F0E4;
+  --border: #E4DACB;
+  --text: #33302A;
+  --text-muted: #948A79;
+  --primary: #C2A878;
+  --primary-hover: #A98B5C;
+  --male: #6E8CAE;
+  --male-border: #5A79A0;
+  --female: #C08497;
+  --female-border: #A96B80;
+  --empty: #FFFDF9;
+  --empty-border: #DED3C1;
+  --sold: #C2A878;
+  --sold-hover: #A98B5C;
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
-  --shadow: 0 20px 50px -18px rgba(0,0,0,.65);
+  --shadow: 0 20px 50px -22px rgba(90,72,45,.28);
   --font: 'Inter', system-ui, sans-serif;
 }
 
@@ -68,7 +68,7 @@ button{ font-family: inherit; cursor: pointer; }
   height: 56px;
   margin: 0 auto 18px;
   border-radius: 50%;
-  background: rgba(202,138,4,.12);
+  background: rgba(169,139,92,.14);
   color: var(--primary-hover);
   display: flex;
   align-items: center;
@@ -99,7 +99,7 @@ button{ font-family: inherit; cursor: pointer; }
 
 /* Topbar */
 .topbar{
-  background: rgba(11,11,29,.85);
+  background: rgba(251,246,238,.85);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -123,8 +123,8 @@ button{ font-family: inherit; cursor: pointer; }
   text-transform: uppercase;
   letter-spacing: .5px;
   color: var(--primary-hover);
-  background: rgba(202,138,4,.12);
-  border: 1px solid rgba(202,138,4,.3);
+  background: rgba(169,139,92,.14);
+  border: 1px solid rgba(169,139,92,.35);
   padding: 7px 14px;
   border-radius: 999px;
 }
@@ -135,7 +135,7 @@ button{ font-family: inherit; cursor: pointer; }
   font-weight: 700;
   font-size: 1.1rem;
 }
-.brand-icon{ color: var(--primary-hover); display: inline-flex; filter: drop-shadow(0 0 8px rgba(234,179,8,.4)); }
+.brand-icon{ color: var(--primary-hover); display: inline-flex; filter: drop-shadow(0 0 8px rgba(169,139,92,.3)); }
 
 /* Role-based visibility, toggled via [data-role] on #appRoot.
    admin-only: Yönetici only — hidden from both Misafir and Satış. */
@@ -270,10 +270,10 @@ button{ font-family: inherit; cursor: pointer; }
   min-height: 44px;
   transition: background .15s ease, box-shadow .15s ease, border-color .15s ease, color .15s ease;
 }
-.btn-primary{ background: var(--primary); color: #1a1300; }
-.btn-primary:hover{ background: var(--primary-hover); box-shadow: 0 8px 20px -6px rgba(234,179,8,.45); }
-.btn-gold{ background: var(--primary); color: #1a1300; }
-.btn-gold:hover{ background: var(--primary-hover); box-shadow: 0 8px 20px -6px rgba(234,179,8,.45); }
+.btn-primary{ background: var(--primary); color: #33302A; }
+.btn-primary:hover{ background: var(--primary-hover); color: #FFFDF9; box-shadow: 0 8px 20px -6px rgba(169,139,92,.4); }
+.btn-gold{ background: var(--primary); color: #33302A; }
+.btn-gold:hover{ background: var(--primary-hover); color: #FFFDF9; box-shadow: 0 8px 20px -6px rgba(169,139,92,.4); }
 .btn-ghost-gold{ background: transparent; border: 1px solid var(--border); color: var(--text); }
 .btn-ghost-gold:hover{ border-color: var(--primary-hover); color: var(--primary-hover); }
 .btn-ghost{ background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
@@ -329,7 +329,7 @@ button{ font-family: inherit; cursor: pointer; }
   margin: 0 auto 26px;
   max-width: 420px;
   border-radius: 0 0 100px 100px / 0 0 30px 30px;
-  background: linear-gradient(180deg, rgba(234,179,8,.35), transparent);
+  background: linear-gradient(180deg, rgba(194,168,120,.35), transparent);
   border-top: 2px solid var(--primary-hover);
   display: flex;
   align-items: flex-start;
@@ -338,7 +338,7 @@ button{ font-family: inherit; cursor: pointer; }
   font-size: .7rem;
   letter-spacing: 4px;
   padding-top: 6px;
-  box-shadow: 0 10px 30px -5px rgba(234,179,8,.25);
+  box-shadow: 0 10px 30px -5px rgba(194,168,120,.28);
 }
 
 /* Grid panel */
@@ -357,7 +357,7 @@ button{ font-family: inherit; cursor: pointer; }
   border-radius: 10px 10px 5px 5px;
   border: 1.5px solid var(--empty-border);
   background: var(--empty);
-  color: #4b4880;
+  color: #A89C87;
   font-size: .78rem;
   font-weight: 600;
   display: flex;
@@ -381,7 +381,7 @@ button{ font-family: inherit; cursor: pointer; }
   border-radius: 50%;
   background: var(--sold);
   border: 1.5px solid var(--surface);
-  color: #1a1300;
+  color: #33302A;
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -398,7 +398,7 @@ button{ font-family: inherit; cursor: pointer; }
   position: fixed;
   bottom: 24px; left: 50%;
   transform: translateX(-50%);
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--primary);
   color: var(--text);
   padding: 12px 20px;
@@ -416,7 +416,7 @@ button{ font-family: inherit; cursor: pointer; }
 .modal-overlay{
   position: fixed;
   inset: 0;
-  background: rgba(5,5,16,.75);
+  background: rgba(51,48,42,.45);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -439,7 +439,7 @@ button{ font-family: inherit; cursor: pointer; }
 .modal-close{
   position: absolute;
   top: 14px; right: 14px;
-  background: rgba(255,255,255,.06);
+  background: rgba(51,48,42,.06);
   border: none;
   color: var(--text);
   width: 32px; height: 32px;
@@ -447,7 +447,7 @@ button{ font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   transition: background .15s ease;
 }
-.modal-close:hover{ background: rgba(255,255,255,.14); }
+.modal-close:hover{ background: rgba(51,48,42,.12); }
 .seat-modal h3{ margin: 0 0 20px; font-size: 1.15rem; }
 .modal-step-panel[hidden]{ display: none; }
 .modal-subhead{ font-size: .82rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 14px; }
