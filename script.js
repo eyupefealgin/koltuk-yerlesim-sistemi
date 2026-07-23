@@ -135,6 +135,8 @@ let cols = 10;
 let rows = 8;
 let seatStates = [];
 let seatSales = [];
+let seatButtons = [];
+let currentFilter = 'all';
 
 let bulkMode = false;
 let bulkSelected = new Set();
@@ -289,6 +291,7 @@ function renderGrid(){
   seatGrid.classList.toggle('guest-mode', !canEdit());
   normalizeSalesLength();
   seatGrid.innerHTML = '';
+  seatButtons = [];
 
   let seatNum = 0;
   for(let r = 0; r < rows; r++){
@@ -300,10 +303,12 @@ function renderGrid(){
       if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
       btn.addEventListener('click', () => handleSeatClick(idx, btn));
       seatGrid.appendChild(btn);
+      seatButtons.push(btn);
       seatNum++;
     }
   }
   updateStats();
+  applyFilterAndSearch();
 }
 
 // Stadium mode: fixed pitch + tribün-block layout instead of a rows×cols
@@ -329,6 +334,7 @@ function renderStadiumGrid(){
   seatGrid.style.gridTemplateRows = '';
   seatGrid.classList.toggle('guest-mode', !canEdit());
   seatGrid.innerHTML = '';
+  seatButtons = [];
 
   const field = document.createElement('div');
   field.className = 'stadium-field';
@@ -350,9 +356,11 @@ function renderStadiumGrid(){
     if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
     btn.addEventListener('click', () => handleSeatClick(idx, btn));
     seatGrid.appendChild(btn);
+    seatButtons.push(btn);
   });
 
   updateStats();
+  applyFilterAndSearch();
 }
 
 function handleSeatClick(idx, btn){
@@ -388,7 +396,7 @@ function setBulkMode(on){
   bulkModeBtn.classList.toggle('is-active', on);
   if(!on){
     bulkSelected.forEach(i => {
-      const btn = seatGrid.children[i];
+      const btn = seatButtons[i];
       if(btn) btn.classList.remove('bulk-selected');
     });
     bulkSelected.clear();
@@ -492,6 +500,12 @@ function updateStats(){
   document.getElementById('statEmpty').textContent = empty;
   document.getElementById('statSold').textContent = sold;
   document.getElementById('statRevenue').textContent = `${revenue} ₺`;
+
+  const occupancyPercent = total > 0 ? Math.round((sold / total) * 100) : 0;
+  const capacityPercentEl = document.getElementById('capacityPercent');
+  const capacityBarEl = document.getElementById('capacityBar');
+  if (capacityPercentEl) capacityPercentEl.textContent = `${occupancyPercent}%`;
+  if (capacityBarEl) capacityBarEl.style.width = `${occupancyPercent}%`;
 
   updateRevenueBreakdown(revenue);
 }
@@ -780,7 +794,7 @@ function finalizeSeatSale(payment){
   targets.forEach(idx => {
     seatStates[idx] = modalGender;
     seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price, payment } : null;
-    renderSeatVisual(seatGrid.children[idx], idx);
+    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
   });
 
   updateStats();
@@ -806,7 +820,7 @@ modalClearSeatBtn.addEventListener('click', () => {
   if(idx === null) return;
   seatStates[idx] = 'empty';
   seatSales[idx] = null;
-  renderSeatVisual(seatGrid.children[idx], idx);
+  if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
   updateStats();
   saveState();
   pushSeatStates();
@@ -1053,11 +1067,92 @@ logoutBtn.addEventListener('click', () => {
   renderGrid();
 });
 
+// ===== Filters & Search functionality =====
+
+function setupFilters(){
+  const filtersContainer = document.getElementById('gridFilters');
+  if(!filtersContainer) return;
+
+  filtersContainer.addEventListener('click', (e) => {
+    const chip = e.target.closest('.filter-chip');
+    if(!chip) return;
+
+    filtersContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+    chip.classList.add('is-active');
+
+    currentFilter = chip.dataset.filter;
+    applyFilterAndSearch();
+  });
+}
+
+function applyFilterAndSearch(){
+  const query = (document.getElementById('seatSearchInput')?.value || '').trim().toLowerCase();
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
+  if(clearSearchBtn) {
+    clearSearchBtn.hidden = !query;
+  }
+
+  seatGrid.classList.remove('filter-empty', 'filter-male', 'filter-female', 'filter-sold', 'search-active');
+
+  const hasFilter = currentFilter !== 'all';
+  const hasSearch = query.length > 0;
+
+  if (hasFilter) {
+    seatGrid.classList.add(`filter-${currentFilter}`);
+  }
+  if (hasSearch) {
+    seatGrid.classList.add('search-active');
+  }
+
+  seatStates.forEach((state, idx) => {
+    const btn = seatButtons[idx];
+    if(!btn) return;
+
+    let isMatch = true;
+
+    if (hasSearch) {
+      const sale = seatSales[idx];
+      const seatNumStr = String(idx + 1);
+      const label = isStadiumMode() ? STADIUM_BLOCKS[idx].label.toLowerCase() : `koltuk ${Math.floor(idx / cols) + 1}-${(idx % cols) + 1}`;
+
+      const matchLabel = label.includes(query);
+      const matchNum = seatNumStr === query;
+      const matchState = labelFor(state).toLowerCase().includes(query);
+      const matchTier = sale && sale.label.toLowerCase().includes(query);
+      const matchPayment = sale && paymentLabel(sale.payment)?.toLowerCase().includes(query);
+
+      isMatch = matchLabel || matchNum || matchState || matchTier || matchPayment;
+    }
+
+    btn.classList.toggle('search-match', isMatch);
+  });
+}
+
 // Init: restore previous session or default grid
 (function init(){
   loadTiers();
   renderTierList();
   loadVenueType();
+  setupFilters();
+
+  const searchInput = document.getElementById('seatSearchInput');
+  if(searchInput) {
+    searchInput.addEventListener('input', applyFilterAndSearch);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchInput.blur();
+      }
+    });
+  }
+
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
+  if(clearSearchBtn) {
+    clearSearchBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      applyFilterAndSearch();
+    });
+  }
 
   const saved = loadState();
   if(saved && saved.cols && saved.rows && Array.isArray(saved.seatStates)){
