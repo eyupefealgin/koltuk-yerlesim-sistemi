@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Koltuk Yerleşim Sistemi</title>
 <meta name="description" content="Sinema tarzı koltuk yerleşim ve bilet satış sistemi — misafir, satış ve yönetici rollü, çoklu cihaz senkronizasyonlu.">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" href="icons8-ticket-100.png">
+<meta name="theme-color" content="#FAF8F3">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,13 +18,7 @@
 <div class="login-gate" id="loginGate">
   <div class="login-card">
     <div class="login-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6">
-        <rect x="7" y="3" width="10" height="10" rx="3"/>
-        <rect x="3" y="9" width="2.4" height="8" rx="1.2"/>
-        <rect x="18.6" y="9" width="2.4" height="8" rx="1.2"/>
-        <rect x="4" y="12.5" width="16" height="5" rx="2"/>
-        <path d="M6.5 17.5v3M17.5 17.5v3"/>
-      </svg>
+      <img src="icons8-ticket-100.png" alt="" width="34" height="34">
     </div>
     <h1>Koltuk Yerleşim Sistemi</h1>
     <p class="login-sub">Devam etmek için bir rol seç.</p>
@@ -48,13 +44,7 @@
   <div class="topbar-inner">
     <div class="brand">
       <span class="brand-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="7" y="3" width="10" height="10" rx="3"/>
-          <rect x="3" y="9" width="2.4" height="8" rx="1.2"/>
-          <rect x="18.6" y="9" width="2.4" height="8" rx="1.2"/>
-          <rect x="4" y="12.5" width="16" height="5" rx="2"/>
-          <path d="M6.5 17.5v3M17.5 17.5v3"/>
-        </svg>
+        <img src="icons8-ticket-100.png" alt="" width="24" height="24">
       </span>
       <span>Koltuk Yerleşim Sistemi</span>
     </div>
@@ -119,11 +109,26 @@
   </section>
 
   <section class="panel status-panel">
-    <div class="legend" aria-label="Renk açıklaması">
-      <span><i class="swatch empty"></i> Boş</span>
-      <span><i class="swatch male"></i> Erkek</span>
-      <span><i class="swatch female"></i> Kadın</span>
+    <div class="status-top">
+      <div class="legend" id="gridFilters" role="group" aria-label="Koltuk filtreleri">
+        <button class="filter-chip is-active" data-filter="all" type="button">Tümü</button>
+        <button class="filter-chip" data-filter="empty" type="button"><i class="swatch empty"></i> Boş</button>
+        <button class="filter-chip" data-filter="male" type="button"><i class="swatch male"></i> Erkek</button>
+        <button class="filter-chip" data-filter="female" type="button"><i class="swatch female"></i> Kadın</button>
+        <button class="filter-chip" data-filter="sold" type="button"><i class="swatch sold-swatch"></i> Satılan</button>
+      </div>
+
+      <div class="capacity-container">
+        <div class="capacity-label">
+          <span>Doluluk Oranı</span>
+          <strong id="capacityPercent">0%</strong>
+        </div>
+        <div class="capacity-bar-bg">
+          <div class="capacity-bar" id="capacityBar" style="width: 0%"></div>
+        </div>
+      </div>
     </div>
+
     <div class="stats" id="stats" aria-live="polite">
       <div class="stat"><strong id="statTotal">0</strong><span>Toplam</span></div>
       <div class="stat"><strong id="statMale">0</strong><span>Erkek</span></div>
@@ -141,12 +146,20 @@
   </section>
 
   <section class="panel grid-panel">
-    <div class="bulk-toolbar editor-only" id="bulkToolbar">
-      <div class="bulk-mode-toggle" role="group" aria-label="Seçim modu">
-        <button class="mode-chip is-active" id="singleModeBtn" type="button">Tekli Seçim</button>
-        <button class="mode-chip" id="bulkModeBtn" type="button">Çoklu Seçim</button>
+    <div class="grid-toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="seatSearchInput" placeholder="Koltuk / Blok Ara (ör. 12, VIP, kart)..." maxlength="30">
+        <button id="clearSearchBtn" type="button" hidden>×</button>
       </div>
-      <button class="btn btn-gold btn-sm" id="startBulkSaleBtn" type="button" hidden>Satışa Başla (<span id="bulkCount">0</span>)</button>
+
+      <div class="bulk-toolbar editor-only" id="bulkToolbar">
+        <div class="bulk-mode-toggle" role="group" aria-label="Seçim modu">
+          <button class="mode-chip is-active" id="singleModeBtn" type="button">Tekli Seçim</button>
+          <button class="mode-chip" id="bulkModeBtn" type="button">Çoklu Seçim</button>
+        </div>
+        <button class="btn btn-gold btn-sm" id="startBulkSaleBtn" type="button" hidden>Satışa Başla (<span id="bulkCount">0</span>)</button>
+      </div>
     </div>
 
     <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç</p>
