@@ -122,8 +122,14 @@ function livePreviewTotal(){
   totalPreview.textContent = c * r;
 }
 
+// seatSales is deliberately NOT cached here. It used to be, but that meant a
+// browser that had ever been logged in as Satış/Yönetici kept real prices in
+// localStorage — and a later Misafir session on that same browser/computer
+// would read that stale cache and show sold badges/prices it was never
+// actually sent. seatSales now only ever comes from a live Supabase fetch
+// (ensureSalesSync, canEdit() roles only) or stays null for guests.
 function saveState(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ cols, rows, seatStates, seatSales }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ cols, rows, seatStates }));
 }
 
 function loadState(){
@@ -888,6 +894,13 @@ logoutBtn.addEventListener('click', () => {
   passwordInput.value = '';
   loginError.hidden = true;
   setBulkMode(false);
+
+  // Wipe any sales data pulled in during a privileged session — otherwise,
+  // without a page reload, a guest login right after in the same tab would
+  // still see it sitting in memory even though it's never fetched for guests.
+  seatSales = new Array(seatStates.length).fill(null);
+  salesSynced = false;
+  renderGrid();
 });
 
 // Init: restore previous session or default grid
@@ -901,9 +914,8 @@ logoutBtn.addEventListener('click', () => {
     cols = saved.cols;
     rows = saved.rows;
     seatStates = saved.seatStates;
-    seatSales = Array.isArray(saved.seatSales) && saved.seatSales.length === seatStates.length
-      ? saved.seatSales
-      : new Array(seatStates.length).fill(null);
+    // Always start clean, never from cache — see the note on saveState().
+    seatSales = new Array(seatStates.length).fill(null);
     colsInput.value = cols;
     rowsInput.value = rows;
     updateTotalPreview();
