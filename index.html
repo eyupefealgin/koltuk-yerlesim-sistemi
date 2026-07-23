@@ -65,28 +65,32 @@
 <main class="page">
 
   <section class="panel settings-panel admin-only">
-    <div class="settings-row">
-      <label class="field">
-        <span>Sütun Sayısı (En)</span>
-        <input type="number" id="colsInput" min="1" max="40" value="10" inputmode="numeric">
-      </label>
-      <label class="field">
-        <span>Satır Sayısı (Boy)</span>
-        <input type="number" id="rowsInput" min="1" max="30" value="8" inputmode="numeric">
-      </label>
-      <div class="field field-static">
-        <span>Toplam Koltuk</span>
-        <strong id="totalPreview">80</strong>
+    <div id="layoutControls">
+      <div class="settings-row">
+        <label class="field">
+          <span>Sütun Sayısı (En)</span>
+          <input type="number" id="colsInput" min="1" max="40" value="10" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>Satır Sayısı (Boy)</span>
+          <input type="number" id="rowsInput" min="1" max="30" value="8" inputmode="numeric">
+        </label>
+        <div class="field field-static">
+          <span>Toplam Koltuk</span>
+          <strong id="totalPreview">80</strong>
+        </div>
+        <button class="btn btn-primary" id="generateBtn" type="button">Düzeni Oluştur</button>
       </div>
-      <button class="btn btn-primary" id="generateBtn" type="button">Düzeni Oluştur</button>
+
+      <div class="presets" role="group" aria-label="Hazır düzenler">
+        <button class="preset-chip" data-cols="6" data-rows="5" type="button">6×5</button>
+        <button class="preset-chip" data-cols="10" data-rows="8" type="button">10×8</button>
+        <button class="preset-chip" data-cols="12" data-rows="10" type="button">12×10</button>
+        <button class="preset-chip" data-cols="16" data-rows="12" type="button">16×12</button>
+      </div>
     </div>
 
-    <div class="presets" role="group" aria-label="Hazır düzenler">
-      <button class="preset-chip" data-cols="6" data-rows="5" type="button">6×5</button>
-      <button class="preset-chip" data-cols="10" data-rows="8" type="button">10×8</button>
-      <button class="preset-chip" data-cols="12" data-rows="10" type="button">12×10</button>
-      <button class="preset-chip" data-cols="16" data-rows="12" type="button">16×12</button>
-    </div>
+    <p class="stadium-note" id="stadiumNote" hidden>Futbol Sahası düzeni sabit bir stadyum şemasıdır (tribün blokları) — sütun/satır ayarı bu türde geçerli değil.</p>
 
     <div class="venue-type-row">
       <span class="ticket-prices-label">Etkinlik Türü:</span>

@@ -37,6 +37,37 @@ const VENUE_TYPES = {
 };
 let venueType = 'sinema';
 
+function isStadiumMode(){
+  return venueType === 'futbol';
+}
+
+// Fixed stadium seating map for Futbol Sahası: a pitch in the center with
+// named tribün blocks arranged around it (Doğu/Batı = uzun kenarlar,
+// Kuzey/Güney = kısa kenarlar), plus corner special blocks — original layout,
+// not a copy of any specific real stadium's chart. Each block is just one
+// entry in seatStates/seatSales, same as a numbered seat, so the whole
+// sale/sync/data-minimization pipeline is reused unchanged.
+function buildStadiumBlocks(){
+  const blocks = [];
+  const longCols = [3, 4, 5, 6, 7, 8];
+  const longLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+  longCols.forEach((c, i) => blocks.push({ label: `Doğu ${longLetters[i]}`, col: `${c} / ${c + 1}`, row: '1 / 3' }));
+  longCols.forEach((c, i) => blocks.push({ label: `Batı ${longLetters[i]}`, col: `${c} / ${c + 1}`, row: '7 / 9' }));
+
+  const shortRows = [3, 4, 5, 6];
+  const shortLetters = ['A', 'B', 'C', 'D'];
+  shortRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortLetters[i]}`, col: '1 / 3', row: `${r} / ${r + 1}` }));
+  shortRows.forEach((r, i) => blocks.push({ label: `Güney ${shortLetters[i]}`, col: '9 / 11', row: `${r} / ${r + 1}` }));
+
+  blocks.push({ label: 'VIP', col: '1 / 3', row: '1 / 3' });
+  blocks.push({ label: 'Misafir', col: '9 / 11', row: '1 / 3' });
+  blocks.push({ label: 'Basın', col: '1 / 3', row: '7 / 9' });
+  blocks.push({ label: 'Protokol', col: '9 / 11', row: '7 / 9' });
+
+  return blocks;
+}
+const STADIUM_BLOCKS = buildStadiumBlocks();
+
 const ROLE_SESSION_KEY = 'koltukYerlesim.role';
 // Client-side gate only — not real security, just separates the three
 // experiences (misafir/satış/yönetici). Anyone can read these in the source.
@@ -61,6 +92,8 @@ let currentRole = null; // 'guest' | 'sales' | 'admin'
 const colsInput = document.getElementById('colsInput');
 const rowsInput = document.getElementById('rowsInput');
 const totalPreview = document.getElementById('totalPreview');
+const layoutControlsEl = document.getElementById('layoutControls');
+const stadiumNoteEl = document.getElementById('stadiumNote');
 const seatGrid = document.getElementById('seatGrid');
 const gridHint = document.getElementById('gridHint');
 const screenAccentEl = document.getElementById('screenAccent');
@@ -173,6 +206,14 @@ function renderVenueAccent(){
   document.querySelectorAll('#venueTypeChips .preset-chip').forEach(c => {
     c.classList.toggle('is-active', c.dataset.venue === venueType);
   });
+
+  // Stadium mode replaces the cols/rows grid + accent bar with a fixed
+  // stadium diagram (pitch + tribün blocks), so the layout controls that
+  // only make sense for a rectangular grid are hidden in this mode.
+  const stadium = isStadiumMode();
+  layoutControlsEl.hidden = stadium;
+  stadiumNoteEl.hidden = !stadium;
+  screenAccentEl.hidden = stadium;
 }
 
 // seatSales must always be the same length as seatStates for index alignment —
@@ -220,10 +261,17 @@ function generateGrid(preserve, skipPush){
 }
 
 function renderGrid(){
+  if(isStadiumMode()){
+    renderStadiumGrid();
+    return;
+  }
+
+  seatGrid.classList.remove('stadium-mode');
   // Seats are direct grid children so CSS Grid wraps them into real rows —
   // wrapping them in per-row divs previously made every row a single grid
   // item, so all rows collapsed onto one visual line.
   seatGrid.style.gridTemplateColumns = `repeat(${cols}, auto)`;
+  seatGrid.style.gridTemplateRows = '';
   seatGrid.classList.toggle('guest-mode', !canEdit());
   normalizeSalesLength();
   seatGrid.innerHTML = '';
@@ -241,6 +289,55 @@ function renderGrid(){
       seatNum++;
     }
   }
+  updateStats();
+}
+
+// Stadium mode: fixed pitch + tribün-block layout instead of a rows×cols
+// numbered grid. seatStates/seatSales are forced to STADIUM_BLOCKS.length so
+// every block still maps 1:1 to one array index — the sale modal, bulk
+// select, revenue breakdown and Supabase sync all keep working unchanged.
+function renderStadiumGrid(){
+  const total = STADIUM_BLOCKS.length;
+  if(seatStates.length !== total){
+    const nextStates = new Array(total).fill('empty');
+    const nextSales = new Array(total).fill(null);
+    for(let i = 0; i < Math.min(seatStates.length, total); i++){
+      nextStates[i] = seatStates[i];
+      nextSales[i] = seatSales[i] || null;
+    }
+    seatStates = nextStates;
+    seatSales = nextSales;
+  }
+  normalizeSalesLength();
+
+  seatGrid.classList.add('stadium-mode');
+  seatGrid.style.gridTemplateColumns = '';
+  seatGrid.style.gridTemplateRows = '';
+  seatGrid.classList.toggle('guest-mode', !canEdit());
+  seatGrid.innerHTML = '';
+
+  const field = document.createElement('div');
+  field.className = 'stadium-field';
+  field.setAttribute('aria-hidden', 'true');
+  const boxLeft = document.createElement('div');
+  boxLeft.className = 'stadium-field-box left';
+  const boxRight = document.createElement('div');
+  boxRight.className = 'stadium-field-box right';
+  field.appendChild(boxLeft);
+  field.appendChild(boxRight);
+  seatGrid.appendChild(field);
+
+  STADIUM_BLOCKS.forEach((block, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    renderSeatVisual(btn, idx);
+    btn.style.gridColumn = block.col;
+    btn.style.gridRow = block.row;
+    if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
+    btn.addEventListener('click', () => handleSeatClick(idx, btn));
+    seatGrid.appendChild(btn);
+  });
+
   updateStats();
 }
 
@@ -310,7 +407,10 @@ function paymentLabel(payment){
 
 // Same-row immediate left/right neighbor check. Warns (doesn't block) when a
 // gender assignment would put opposite genders directly side by side.
+// Stadium blocks aren't laid out as simple grid rows, so this check doesn't
+// apply there.
 function findAdjacencyConflict(idx, gender){
+  if(isStadiumMode()) return false;
   const col = idx % cols;
   const neighbors = [];
   if(col > 0) neighbors.push(idx - 1);
@@ -322,11 +422,14 @@ function findAdjacencyConflict(idx, gender){
 }
 
 function seatAriaLabel(idx){
-  const r = Math.floor(idx / cols) + 1;
-  const c = (idx % cols) + 1;
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
-  let label = `Koltuk ${r}-${c}, durum: ${labelFor(state)}`;
+  const name = isStadiumMode() ? `${STADIUM_BLOCKS[idx].label} Bloğu` : (() => {
+    const r = Math.floor(idx / cols) + 1;
+    const c = (idx % cols) + 1;
+    return `Koltuk ${r}-${c}`;
+  })();
+  let label = `${name}, durum: ${labelFor(state)}`;
   if(sale) label += `, satıldı: ${sale.label} ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
   return label;
 }
@@ -334,13 +437,18 @@ function seatAriaLabel(idx){
 function renderSeatVisual(btn, idx){
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
+  const stadium = isStadiumMode();
 
-  btn.className = ['seat', state !== 'empty' ? state : null, sale ? 'sold' : null].filter(Boolean).join(' ');
+  // stadium-block must be re-applied every time, not just on the initial
+  // render — finalizeSeatSale()/modalClearSeatBtn call this directly after a
+  // sale, which used to wipe className back to just "seat" + state, losing
+  // the stadium sizing class.
+  btn.className = ['seat', state !== 'empty' ? state : null, sale ? 'sold' : null, stadium ? 'stadium-block' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
 
   const num = document.createElement('span');
   num.className = 'seat-num';
-  num.textContent = idx + 1;
+  num.textContent = stadium ? STADIUM_BLOCKS[idx].label : idx + 1;
   btn.appendChild(num);
 
   if(sale){
@@ -446,6 +554,22 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
     venueType = chip.dataset.venue;
     renderVenueAccent();
     saveVenueType();
+
+    if(isStadiumMode()){
+      // renderGrid() will resize seatStates/seatSales to STADIUM_BLOCKS.length.
+      renderGrid();
+      saveState();
+      pushSeatStates();
+      pushSalesData();
+    } else if(seatStates.length !== cols * rows){
+      // Coming back from the fixed stadium layout — its block count won't
+      // line up with whatever cols/rows this venue type uses, so start
+      // this venue type with a fresh empty grid rather than a length mismatch.
+      generateGrid(false);
+    } else {
+      renderGrid();
+    }
+
     toast(`Etkinlik türü: ${VENUE_TYPES[venueType].label}`);
   });
 });
@@ -583,9 +707,13 @@ function openSeatModal(idx){
   modalGender = null;
   modalTier = null;
 
-  const r = Math.floor(idx / cols) + 1;
-  const c = (idx % cols) + 1;
-  seatModalTitle.textContent = `Koltuk ${r}-${c}`;
+  if(isStadiumMode()){
+    seatModalTitle.textContent = `${STADIUM_BLOCKS[idx].label} Bloğu`;
+  } else {
+    const r = Math.floor(idx / cols) + 1;
+    const c = (idx % cols) + 1;
+    seatModalTitle.textContent = `Koltuk ${r}-${c}`;
+  }
 
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];

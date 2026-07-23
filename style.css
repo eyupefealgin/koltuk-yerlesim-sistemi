@@ -359,6 +359,7 @@ button{ font-family: inherit; cursor: pointer; }
   box-shadow: 0 10px 30px -5px rgba(122,155,110,.3);
   padding-top: 18px;
 }
+.screen-curve[hidden]{ display: none; }
 .screen-curve.flat{
   height: 8px;
   max-width: 320px;
@@ -369,6 +370,9 @@ button{ font-family: inherit; cursor: pointer; }
   padding-top: 16px;
   color: var(--text-muted);
 }
+
+.stadium-note{ font-size: .82rem; color: var(--text-muted); margin: 14px 0 0; }
+.stadium-note[hidden]{ display: none; }
 
 /* Bulk selection toolbar */
 .bulk-toolbar{
@@ -446,6 +450,67 @@ button{ font-family: inherit; cursor: pointer; }
 }
 .seat-grid.guest-mode .seat{ cursor: default; }
 .seat-grid.guest-mode .seat:hover{ transform: none; box-shadow: none; }
+
+/* Stadium diagram (Futbol Sahası only) — pitch in the center, tribün
+   blocks arranged around it on a fixed CSS grid instead of the normal
+   auto-flowing numbered seat grid. */
+.seat-grid.stadium-mode{
+  display: grid;
+  grid-template-columns: repeat(11, minmax(52px, 64px));
+  grid-template-rows: repeat(8, minmax(40px, auto));
+  gap: 6px;
+  margin: 0 auto;
+}
+.stadium-field{
+  grid-column: 3 / 9;
+  grid-row: 3 / 7;
+  position: relative;
+  background: linear-gradient(160deg, #7fbb69, #4f8a3f);
+  border: 3px solid rgba(255,253,249,.85);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.06), 0 10px 24px -10px rgba(79,138,63,.5);
+}
+.stadium-field::before{
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 2px;
+  background: rgba(255,255,255,.65);
+  transform: translateX(-50%);
+}
+.stadium-field::after{
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 15%; aspect-ratio: 1;
+  min-width: 34px; min-height: 34px;
+  border: 2px solid rgba(255,255,255,.65);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.stadium-field-box{
+  position: absolute;
+  top: 50%;
+  width: 8%;
+  min-width: 20px;
+  height: 46%;
+  border: 2px solid rgba(255,255,255,.65);
+  transform: translateY(-50%);
+}
+.stadium-field-box.left{ left: 0; border-left: none; border-radius: 0 4px 4px 0; }
+.stadium-field-box.right{ right: 0; border-right: none; border-radius: 4px 0 0 4px; }
+.stadium-block{
+  width: auto;
+  height: auto;
+  min-height: 100%;
+  border-radius: 8px;
+  font-size: .66rem;
+  line-height: 1.2;
+  padding: 4px 2px;
+  white-space: normal;
+  text-align: center;
+}
+.stadium-block .seat-num{ font-weight: 700; }
 
 /* Toast */
 .toast{

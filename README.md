@@ -7,7 +7,8 @@ Sinema/tiyatro/konser/futbol sahası gibi etkinlikler için koltuk yerleşim ve 
 ## Özellikler
 
 - **3 rol**: **Misafir** (şifresiz, sadece görüntüler) · **Satış** (kendi şifresi, koltuk satar) · **Yönetici** (kendi şifresi, her şeye erişir: düzen, bilet türleri, sıfırlama)
-- **Etkinlik türü**: Sinema / Tiyatro / Konser / Futbol Sahası / Genel Etkinlik seçilebilir — üstteki "PERDE/SAHNE/SAHA/ALAN" alanı türe göre şekil ve etiket değiştirir (Futbol Sahası → oval)
+- **Etkinlik türü**: Sinema / Tiyatro / Konser / Futbol Sahası / Genel Etkinlik seçilebilir — üstteki "PERDE/SAHNE/ALAN" alanı türe göre şekil ve etiket değiştirir
+- **Futbol Sahası düzeni**: sayısal koltuk yerine sabit bir stadyum şeması — ortada saha, etrafında Doğu/Batı/Kuzey/Güney tribün blokları + VIP/Misafir/Basın/Protokol köşe blokları (24 blok). Sütun/satır ayarı bu türde geçerli değil; diğer türler normal koltuk ızgarasını kullanmaya devam eder
 - **Satış akışı**: bir koltuğa tıkla → sırayla **Cinsiyet** (Erkek/Kadın) → **Bilet Türü** (Standart/VIP/Öğrenci/... ) → **Ödeme Yöntemi** (Kart/Nakit) seç, koltuk otomatik kaydedilir. Dolu bir koltuğa tıklayınca bilgisi gösterilir, "Koltuğu Boşalt" ile geri alınabilir
 - **Toplu seçim**: "Çoklu Seçim" moduna geçip birden fazla boş koltuğu işaretleyip "Satışa Başla" ile hepsine tek seferde aynı cinsiyet/tür/ödeme uygulanabilir
 - **Cinsiyet uyarısı**: aynı sırada yan yana farklı cinsiyet atanacaksa uyarı gösterilir (işlemi engellemez)
