@@ -140,7 +140,13 @@
   </section>
 
   <section class="panel revenue-panel admin-only">
-    <h3 class="revenue-title">Ciro Özeti</h3>
+    <h3 class="revenue-title">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5"/>
+        <path d="M12 7.5v9M9.5 9.5h4a2 2 0 0 1 0 4h-3a2 2 0 0 0 0 4h4.5"/>
+      </svg>
+      Ciro Özeti
+    </h3>
     <div class="revenue-breakdown" id="revenueBreakdown"></div>
     <div class="revenue-breakdown" id="paymentBreakdown"></div>
   </section>
@@ -148,7 +154,12 @@
   <section class="panel grid-panel">
     <div class="grid-toolbar">
       <div class="search-box">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="10.5" cy="10.5" r="6.5"/>
+            <path d="M15.5 15.5L20 20" stroke-linecap="round"/>
+          </svg>
+        </span>
         <input type="text" id="seatSearchInput" placeholder="Koltuk / Blok Ara (ör. 12, VIP, kart)..." maxlength="30">
         <button id="clearSearchBtn" type="button" hidden>×</button>
       </div>
