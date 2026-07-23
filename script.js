@@ -187,7 +187,13 @@ function normalizeSalesLength(){
   }
 }
 
-function generateGrid(preserve){
+// skipPush=true is for the very first paint before we've ever heard from
+// Supabase (init(), when there's no local cache yet). Without it, a brand
+// new visitor — including a Misafir, who never even clicks anything —
+// would push the HTML's hardcoded default layout (10×8) to Supabase and
+// silently overwrite whatever real layout was already there, just by
+// opening the page before ensureSeatsSync() had a chance to fetch it.
+function generateGrid(preserve, skipPush){
   clampDims();
   const total = cols * rows;
 
@@ -207,8 +213,10 @@ function generateGrid(preserve){
 
   renderGrid();
   saveState();
-  pushLayout();     // cols/rows/seat_states → seats table
-  pushSalesData();  // seat_sales reset too → sales table
+  if(!skipPush){
+    pushLayout();     // cols/rows/seat_states → seats table
+    pushSalesData();  // seat_sales reset too → sales table
+  }
 }
 
 function renderGrid(){
@@ -924,7 +932,7 @@ logoutBtn.addEventListener('click', () => {
   } else {
     updateTotalPreview();
     renderVenueAccent();
-    generateGrid(false);
+    generateGrid(false, true); // skipPush — see the comment on generateGrid()
   }
 
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
