@@ -43,21 +43,35 @@ function isStadiumMode(){
 
 // Fixed stadium seating map for Futbol Sahası: a pitch in the center with
 // named tribün blocks arranged around it (Doğu/Batı = uzun kenarlar,
-// Kuzey/Güney = kısa kenarlar), plus corner special blocks — original layout,
-// not a copy of any specific real stadium's chart. Each block is just one
-// entry in seatStates/seatSales, same as a numbered seat, so the whole
-// sale/sync/data-minimization pipeline is reused unchanged.
+// Kuzey/Güney = kısa kenarlar), each stand split into an inner tier (nearer
+// the pitch) and outer tier (back row), plus corner special blocks —
+// original layout, not a copy of any specific real stadium's chart. Each
+// block is just one entry in seatStates/seatSales, same as a numbered seat,
+// so the whole sale/sync/data-minimization pipeline is reused unchanged.
+//
+// Grid is exactly 10 columns × 8 rows with no unused tracks (1-2 = left
+// tier, 3-8 = pitch, 9-10 = right tier; same idea for rows) — an earlier
+// version declared 11 columns while only using 10, leaving a dead column
+// that pushed the whole diagram off-center.
 function buildStadiumBlocks(){
   const blocks = [];
-  const longCols = [3, 4, 5, 6, 7, 8];
-  const longLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-  longCols.forEach((c, i) => blocks.push({ label: `Doğu ${longLetters[i]}`, col: `${c} / ${c + 1}`, row: '1 / 3' }));
-  longCols.forEach((c, i) => blocks.push({ label: `Batı ${longLetters[i]}`, col: `${c} / ${c + 1}`, row: '7 / 9' }));
+  const fieldCols = [3, 4, 5, 6, 7, 8];
+  const innerLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const outerLetters = ['G', 'H', 'I', 'J', 'K', 'L'];
 
-  const shortRows = [3, 4, 5, 6];
-  const shortLetters = ['A', 'B', 'C', 'D'];
-  shortRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortLetters[i]}`, col: '1 / 3', row: `${r} / ${r + 1}` }));
-  shortRows.forEach((r, i) => blocks.push({ label: `Güney ${shortLetters[i]}`, col: '9 / 11', row: `${r} / ${r + 1}` }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `Doğu ${innerLetters[i]}`, col: `${c} / ${c + 1}`, row: '2 / 3' }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `Doğu ${outerLetters[i]}`, col: `${c} / ${c + 1}`, row: '1 / 2' }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `Batı ${innerLetters[i]}`, col: `${c} / ${c + 1}`, row: '7 / 8' }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `Batı ${outerLetters[i]}`, col: `${c} / ${c + 1}`, row: '8 / 9' }));
+
+  const fieldRows = [3, 4, 5, 6];
+  const shortInner = ['A', 'B', 'C', 'D'];
+  const shortOuter = ['E', 'F', 'G', 'H'];
+
+  fieldRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortInner[i]}`, col: '2 / 3', row: `${r} / ${r + 1}` }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortOuter[i]}`, col: '1 / 2', row: `${r} / ${r + 1}` }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `Güney ${shortInner[i]}`, col: '9 / 10', row: `${r} / ${r + 1}` }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `Güney ${shortOuter[i]}`, col: '10 / 11', row: `${r} / ${r + 1}` }));
 
   blocks.push({ label: 'VIP', col: '1 / 3', row: '1 / 3' });
   blocks.push({ label: 'Misafir', col: '9 / 11', row: '1 / 3' });

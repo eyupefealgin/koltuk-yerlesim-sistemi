@@ -455,11 +455,14 @@ button{ font-family: inherit; cursor: pointer; }
    blocks arranged around it on a fixed CSS grid instead of the normal
    auto-flowing numbered seat grid. */
 .seat-grid.stadium-mode{
-  display: grid;
-  grid-template-columns: repeat(11, minmax(52px, 64px));
-  grid-template-rows: repeat(8, minmax(40px, auto));
+  /* Stays inline-grid (inherited from .seat-grid) — a block-level grid here
+     would stretch to fill .grid-scroll's full width and, since our tracks
+     don't add up to that width, get left-packed inside the extra space
+     instead of centered. inline-grid sizes to its own content, so the
+     .grid-scroll { text-align: center } parent can center it correctly. */
+  grid-template-columns: repeat(10, minmax(52px, 64px));
+  grid-template-rows: repeat(8, minmax(46px, auto));
   gap: 6px;
-  margin: 0 auto;
 }
 .stadium-field{
   grid-column: 3 / 9;
