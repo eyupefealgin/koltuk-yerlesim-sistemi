@@ -181,6 +181,7 @@
           <button class="mode-chip" id="bulkModeBtn" type="button">Çoklu Seçim</button>
         </div>
         <button class="btn btn-gold btn-sm" id="startBulkSaleBtn" type="button" hidden>Satışa Başla (<span id="bulkCount">0</span>)</button>
+        <button class="btn btn-ghost-gold btn-sm editor-only" id="openCheckinBtn" type="button">Bilet Doğrula</button>
       </div>
     </div>
 
@@ -221,8 +222,16 @@
       <div class="modal-choice-row" id="modalTierButtons"></div>
     </div>
 
+    <div class="modal-step-panel" data-panel="buyer" hidden>
+      <p class="modal-subhead">3. Alıcı Bilgisi</p>
+      <input type="text" id="buyerNameInput" class="buyer-name-input" maxlength="60" placeholder="Ad Soyad">
+      <p class="buyer-note" id="buyerNoteText"></p>
+      <button class="btn btn-primary" id="buyerContinueBtn" type="button">Devam Et</button>
+    </div>
+
     <div class="modal-step-panel" data-panel="payment" hidden>
-      <p class="modal-subhead">3. Ödeme Yöntemi</p>
+      <p class="modal-subhead">4. Ödeme Yöntemi</p>
+      <p class="payment-disclaimer" id="paymentDisclaimer" hidden>Bu demo bir sistemdir — seçim sadece kayıt amaçlıdır, gerçek bir ödeme alınmaz.</p>
       <div class="modal-choice-row">
         <button class="choice-btn" data-payment="kart" type="button">Kart</button>
         <button class="choice-btn" data-payment="nakit" type="button">Nakit</button>
@@ -232,7 +241,10 @@
     <div class="modal-step-panel" data-panel="info" hidden>
       <p class="modal-subhead">Koltuk Bilgisi</p>
       <p class="modal-info-text" id="modalInfoText"></p>
-      <button class="btn btn-ghost-gold" id="modalClearSeatBtn" type="button">Koltuğu Boşalt</button>
+      <div class="modal-info-actions">
+        <button class="btn btn-ghost-gold editor-only" id="viewTicketBtn" type="button" hidden>Bileti Görüntüle</button>
+        <button class="btn btn-ghost-gold editor-only" id="modalClearSeatBtn" type="button">Koltuğu Boşalt</button>
+      </div>
     </div>
   </div>
 </div>
@@ -282,6 +294,52 @@
   </div>
 </div>
 
+<!-- ============ TICKET VIEW MODAL ============ -->
+<div class="modal-overlay" id="ticketViewOverlay" hidden>
+  <div class="modal ticket-modal" role="dialog" aria-modal="true" aria-labelledby="ticketViewTitle">
+    <button class="modal-close" id="ticketViewClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="ticketViewTitle">Biletiniz Hazır</h3>
+
+    <div class="ticket-card" id="ticketCard">
+      <div class="ticket-event-name" id="ticketEventName"></div>
+      <div class="ticket-seat-label" id="ticketSeatLabel"></div>
+      <div class="ticket-tier-label" id="ticketTierLabel"></div>
+      <div class="ticket-buyer-name" id="ticketBuyerName" hidden></div>
+      <div class="ticket-qr" id="ticketQrHolder"></div>
+      <div class="ticket-code" id="ticketCodeText"></div>
+      <p class="ticket-checkin-status" id="ticketCheckinStatus"></p>
+    </div>
+
+    <div class="ticket-actions">
+      <button class="btn btn-ghost-gold" id="ticketPrintBtn" type="button">Yazdır</button>
+      <button class="btn btn-gold" id="ticketCloseBtn" type="button">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CHECK-IN (BİLET DOĞRULA) MODAL ============ -->
+<div class="modal-overlay" id="checkinOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkinTitle">
+    <button class="modal-close" id="checkinClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="checkinTitle">Bilet Doğrula</h3>
+
+    <div class="checkin-form">
+      <input type="text" id="checkinCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
+      <button class="btn btn-primary" id="checkinVerifyBtn" type="button">Doğrula</button>
+      <div class="checkin-result" id="checkinResult" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script src="qrcode.min.js"></script>
 <script src="supabase.min.js"></script>
 <script src="script.js"></script>
 </body>

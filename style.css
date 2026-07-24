@@ -343,10 +343,17 @@ input{ font-family: inherit; }
   filter: drop-shadow(0 0 8px rgba(184, 147, 61, 0.3));
 }
 
-/* Role-based visibility */
+/* Role-based visibility. [data-role] is set on both #appRoot AND <body> —
+   modals (seat modal, ticket view, check-in) live outside #appRoot in the
+   DOM, so the body-level selectors are what actually hides staff-only
+   controls (Koltuğu Boşalt, Bileti Görüntüle, Bilet Doğrula) from a guest
+   inside those modals; without them a guest could see/click them. */
 .app-root[data-role="guest"] .admin-only,
-.app-root[data-role="sales"] .admin-only{ display: none !important; }
-.app-root[data-role="guest"] .editor-only{ display: none !important; }
+.app-root[data-role="sales"] .admin-only,
+body[data-role="guest"] .admin-only,
+body[data-role="sales"] .admin-only{ display: none !important; }
+.app-root[data-role="guest"] .editor-only,
+body[data-role="guest"] .editor-only{ display: none !important; }
 
 /* ═══════════════════════════════════════
    PAGE LAYOUT
@@ -1401,6 +1408,113 @@ input{ font-family: inherit; }
   line-height: 1.7;
   margin: 0 0 22px;
 }
+.modal-info-actions{ display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+/* ═══════════════════════════════════════
+   BUYER INFO STEP + PAYMENT DISCLAIMER
+   ═══════════════════════════════════════ */
+.buyer-name-input{
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  font-size: .95rem;
+  color: var(--text);
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.7);
+  margin-bottom: 10px;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.buyer-name-input:focus{
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-glow);
+  background: #fff;
+}
+.buyer-note{ font-size: .78rem; color: var(--text-muted); margin: 0 0 16px; min-height: 1em; }
+.payment-disclaimer{
+  font-size: .8rem;
+  color: var(--text-secondary);
+  background: var(--gold-subtle);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin: 0 0 16px;
+  text-align: left;
+}
+.payment-disclaimer[hidden]{ display: none; }
+
+/* ═══════════════════════════════════════
+   TICKET VIEW (QR + bilet kodu)
+   ═══════════════════════════════════════ */
+.ticket-modal{ max-width: 400px; }
+.ticket-card{
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-card-hover));
+  border: 1px dashed var(--gold);
+  border-radius: var(--radius-md);
+  padding: 22px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.ticket-event-name{ font-size: 1.05rem; font-weight: 800; color: var(--text-bright); text-align: center; }
+.ticket-seat-label{ font-size: .95rem; font-weight: 700; color: var(--gold-dim); }
+.ticket-tier-label{ font-size: .85rem; color: var(--text-secondary); }
+.ticket-buyer-name{ font-size: .85rem; color: var(--text-secondary); }
+.ticket-buyer-name[hidden]{ display: none; }
+.ticket-qr{ margin: 14px 0 8px; }
+.ticket-qr svg{ display: block; width: 160px; height: 160px; }
+.ticket-code{
+  font-family: 'Courier New', monospace;
+  font-size: .82rem;
+  letter-spacing: 1px;
+  color: var(--text);
+  background: var(--gold-subtle);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.ticket-checkin-status{ font-size: .78rem; color: var(--text-muted); margin-top: 8px; }
+.ticket-actions{ display: flex; gap: 10px; justify-content: center; }
+.ticket-actions .btn{ flex: 1 1 auto; }
+
+@media print{
+  body > *:not(.modal-overlay){ display: none !important; }
+  .modal-overlay{ position: static !important; background: none !important; backdrop-filter: none !important; }
+  .modal-overlay[hidden]{ display: none !important; }
+  .modal-close, .ticket-actions{ display: none !important; }
+  .modal{ box-shadow: none !important; border: none !important; }
+}
+
+/* ═══════════════════════════════════════
+   CHECK-IN (BİLET DOĞRULA)
+   ═══════════════════════════════════════ */
+.checkin-form{ display: flex; flex-direction: column; gap: 12px; }
+.checkin-form input{
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  font-size: .95rem;
+  color: var(--text);
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.checkin-form input:focus{
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-glow);
+  background: #fff;
+}
+.checkin-result{
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: .88rem;
+  font-weight: 600;
+  text-align: left;
+}
+.checkin-result[hidden]{ display: none; }
+.checkin-result.ok{ background: rgba(61, 166, 122, 0.12); color: var(--success); }
+.checkin-result.warn{ background: rgba(217, 130, 40, 0.12); color: #B5700F; }
+.checkin-result.error{ background: rgba(217, 80, 80, 0.12); color: var(--danger); }
 
 /* ═══════════════════════════════════════
    RESPONSIVE

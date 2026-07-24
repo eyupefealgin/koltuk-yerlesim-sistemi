@@ -23,14 +23,24 @@ function clearPushTimers(){
   clearTimeout(pushTimerTiers);
 }
 
-// Ticket tiers are per-event (stored in event_sales.tiers) — this is just
-// the seed used when a new event is created / before any event is loaded.
+// Ticket tiers are per-event (stored in events.tiers — public, since a price
+// list isn't sensitive; what stays private is who bought what) — this is
+// just the seed used when a new event is created / before any event loads.
 const DEFAULT_TIERS = [
   { id: 'standart', label: 'Standart', price: 100 },
   { id: 'vip', label: 'VIP', price: 250 },
   { id: 'ogrenci', label: 'Öğrenci', price: 60 },
 ];
 let TICKET_TIERS = [...DEFAULT_TIERS];
+
+// Unique-enough code for a ticket's QR + check-in lookup. Not cryptographic —
+// this app has no real auth, so it's already only as secure as "don't share
+// your ticket code," same trust level as a printed paper ticket.
+function generateTicketCode(){
+  const time = Date.now().toString(36).toUpperCase();
+  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `TKT-${time}-${rand}`;
+}
 
 const VENUE_TYPES = {
   sinema:  { label: 'Sinema', screenLabel: 'PERDE', shape: 'curve' },
@@ -155,13 +165,32 @@ const bulkModeBtn = document.getElementById('bulkModeBtn');
 const startBulkSaleBtn = document.getElementById('startBulkSaleBtn');
 const bulkCountEl = document.getElementById('bulkCount');
 
-// Seat modal (satış akışı: cinsiyet → bilet türü → ödeme)
+// Seat modal (satış akışı: cinsiyet → bilet türü → alıcı → ödeme)
 const seatModalOverlay = document.getElementById('seatModalOverlay');
 const seatModalTitle = document.getElementById('seatModalTitle');
 const seatModalClose = document.getElementById('seatModalClose');
 const modalTierButtonsEl = document.getElementById('modalTierButtons');
 const modalInfoTextEl = document.getElementById('modalInfoText');
 const modalClearSeatBtn = document.getElementById('modalClearSeatBtn');
+const viewTicketBtn = document.getElementById('viewTicketBtn');
+const buyerNameInput = document.getElementById('buyerNameInput');
+const buyerNoteText = document.getElementById('buyerNoteText');
+const buyerContinueBtn = document.getElementById('buyerContinueBtn');
+const paymentDisclaimerEl = document.getElementById('paymentDisclaimer');
+
+// Ticket view (QR + bilet kodu)
+const ticketViewOverlay = document.getElementById('ticketViewOverlay');
+const ticketViewClose = document.getElementById('ticketViewClose');
+const ticketCloseBtn = document.getElementById('ticketCloseBtn');
+const ticketPrintBtn = document.getElementById('ticketPrintBtn');
+
+// Check-in (bilet doğrula)
+const checkinOverlay = document.getElementById('checkinOverlay');
+const checkinClose = document.getElementById('checkinClose');
+const openCheckinBtn = document.getElementById('openCheckinBtn');
+const checkinCodeInput = document.getElementById('checkinCodeInput');
+const checkinVerifyBtn = document.getElementById('checkinVerifyBtn');
+const checkinResultEl = document.getElementById('checkinResult');
 
 let cols = 10;
 let rows = 8;
@@ -177,9 +206,16 @@ let modalSeatIdx = null;      // single-seat flow
 let modalSeatIndices = null;  // bulk flow (array of indices)
 let modalGender = null;
 let modalTier = null;
+let modalBuyerName = '';
 
 function canEdit(){
   return currentRole === 'admin' || currentRole === 'sales';
+}
+
+// Misafir artık kendi koltuğunu kendi satın alabiliyor (staff'ın toplu
+// düzenleme yetkisi olmadan) — bu, canEdit()'ten ayrı ve daha dar bir izin.
+function canPurchase(){
+  return currentRole === 'guest' || canEdit();
 }
 
 function clampDims(){
@@ -344,9 +380,12 @@ function renderStadiumGrid(){
 }
 
 function handleSeatClick(idx, btn){
-  if(!canEdit()) return;
+  if(!canPurchase()) return;
 
-  if(bulkMode){
+  // Toplu seçim sadece personel özelliği — misafir kendi biletini tek tek
+  // (ve sadece boş bir koltuk için) alabilir, bulkMode misafir için hiç
+  // tetiklenmez (araç çubuğu editor-only).
+  if(canEdit() && bulkMode){
     const state = seatStates[idx] || 'empty';
     if(state !== 'empty' || seatSales[idx]){
       toast('Bu koltuk dolu — toplu satış için boş koltuk seç.');
@@ -360,9 +399,10 @@ function handleSeatClick(idx, btn){
       btn.classList.add('bulk-selected');
     }
     updateBulkToolbar();
-  } else {
-    openSeatModal(idx);
+    return;
   }
+
+  openSeatModal(idx);
 }
 
 function updateBulkToolbar(){
@@ -686,10 +726,17 @@ document.getElementById('addTierBtn').addEventListener('click', addTier);
   });
 });
 
-// ===== Seat modal: cinsiyet → bilet türü → ödeme yöntemi =====
+// ===== Seat modal: cinsiyet → bilet türü → alıcı bilgisi → ödeme yöntemi =====
 
 function showModalPanel(name){
   document.querySelectorAll('.modal-step-panel').forEach(p => p.hidden = p.dataset.panel !== name);
+}
+
+function seatLabelFor(idx){
+  if(isStadiumMode()) return `${STADIUM_BLOCKS[idx].label} Bloğu`;
+  const r = Math.floor(idx / cols) + 1;
+  const c = (idx % cols) + 1;
+  return `Koltuk ${r}-${c}`;
 }
 
 function renderModalTierButtons(){
@@ -701,7 +748,12 @@ function renderModalTierButtons(){
     btn.textContent = `${tier.label} (${tier.price}₺)`;
     btn.addEventListener('click', () => {
       modalTier = tier.id;
-      showModalPanel('payment');
+      buyerNameInput.value = '';
+      buyerNoteText.textContent = currentRole === 'guest'
+        ? 'Biletin bu isimle düzenlenecek.'
+        : 'Opsiyonel — boş bırakılabilir.';
+      showModalPanel('buyer');
+      buyerNameInput.focus();
     });
     modalTierButtonsEl.appendChild(btn);
   });
@@ -712,22 +764,31 @@ function openSeatModal(idx){
   modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
+  modalBuyerName = '';
 
-  if(isStadiumMode()){
-    seatModalTitle.textContent = `${STADIUM_BLOCKS[idx].label} Bloğu`;
-  } else {
-    const r = Math.floor(idx / cols) + 1;
-    const c = (idx % cols) + 1;
-    seatModalTitle.textContent = `Koltuk ${r}-${c}`;
-  }
+  seatModalTitle.textContent = seatLabelFor(idx);
 
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
 
   if(state !== 'empty' || sale){
     const parts = [`Cinsiyet: ${labelFor(state)}`];
-    if(sale) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
+    // Fiyat/bilet-türü/ödeme sadece personele gösterilir — CSS zaten
+    // .editor-only ile gizliyor ama burada da JS'te kontrol ediyoruz
+    // (modaller #appRoot dışında yaşıyor, bu yüzden CSS'e tek başına
+    // güvenilmiyor — bkz. body[data-role] notu).
+    if(sale && canEdit()) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
     modalInfoTextEl.textContent = parts.join(' · ');
+
+    if(sale && sale.ticketCode && canEdit()){
+      viewTicketBtn.hidden = false;
+      viewTicketBtn.onclick = () => showTicketView(idx, sale);
+    } else {
+      viewTicketBtn.hidden = true;
+      viewTicketBtn.onclick = null;
+    }
+    modalClearSeatBtn.hidden = !canEdit();
+
     showModalPanel('info');
   } else {
     renderModalTierButtons();
@@ -743,6 +804,7 @@ function closeSeatModal(){
   modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
+  modalBuyerName = '';
 }
 
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
@@ -758,10 +820,38 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
   });
 });
 
-document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
-  btn.addEventListener('click', () => finalizeSeatSale(btn.dataset.payment));
+buyerContinueBtn.addEventListener('click', () => {
+  const name = buyerNameInput.value.trim();
+  if(currentRole === 'guest' && !name){
+    toast('Lütfen ad soyad gir.');
+    return;
+  }
+  modalBuyerName = name;
+  paymentDisclaimerEl.hidden = currentRole !== 'guest';
+  showModalPanel('payment');
+});
+buyerNameInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); buyerContinueBtn.click(); }
 });
 
+document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(currentRole === 'guest') finalizeGuestPurchase(btn.dataset.payment);
+    else finalizeSeatSale(btn.dataset.payment);
+  });
+});
+
+function buildSaleRecord(tier, payment){
+  return {
+    tier: tier.id, label: tier.label, price: tier.price, payment,
+    buyerName: modalBuyerName || null,
+    ticketCode: generateTicketCode(),
+    checkedIn: false,
+  };
+}
+
+// Personel akışı (tekli veya toplu) — mevcut tüm-diziyi-yeniden-yazan push
+// mekanizmasını kullanır; personel zaten güncel diziyi çektiği için güvenli.
 function finalizeSeatSale(payment){
   const targets = modalSeatIndices && modalSeatIndices.length
     ? modalSeatIndices
@@ -769,9 +859,12 @@ function finalizeSeatSale(payment){
   if(!targets.length) return;
 
   const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  let singleSale = null;
   targets.forEach(idx => {
     seatStates[idx] = modalGender;
-    seatSales[idx] = tier ? { tier: tier.id, label: tier.label, price: tier.price, payment } : null;
+    const sale = tier ? buildSaleRecord(tier, payment) : null;
+    seatSales[idx] = sale;
+    if(targets.length === 1) singleSale = sale;
     if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
   });
 
@@ -780,6 +873,7 @@ function finalizeSeatSale(payment){
   pushSalesData();
 
   const wasBulk = targets.length > 1;
+  const singleIdx = targets.length === 1 ? targets[0] : null;
   closeSeatModal();
 
   if(wasBulk){
@@ -789,6 +883,47 @@ function finalizeSeatSale(payment){
     toast(`${targets.length} koltuk kaydedildi.`);
   } else {
     toast('Koltuk kaydedildi.');
+    if(singleIdx !== null && singleSale) showTicketView(singleIdx, singleSale);
+  }
+}
+
+// Misafir akışı — tüm diziyi tekrar yazmak yerine atomik purchase_seat()
+// RPC'sini kullanır: misafirin tarayıcısı diğer koltukların/satışların
+// güncel bir kopyasına sahip DEĞİL, o yüzden tüm-diziyi-yeniden-yazan push
+// burada kullanılırsa başkalarının verisini ezebilirdi. RPC sadece kendi
+// index'ini günceller ve koltuk hâlâ boşsa diye atomik kontrol yapar.
+async function finalizeGuestPurchase(payment){
+  const idx = modalSeatIdx;
+  if(idx === null || !currentEventId) return;
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier) return;
+
+  const sale = buildSaleRecord(tier, payment);
+
+  try {
+    const { error } = await supabaseClient.rpc('purchase_seat', {
+      p_event_id: currentEventId,
+      p_idx: idx,
+      p_gender: modalGender,
+      p_sale: sale,
+    });
+    if(error) throw error;
+
+    seatStates[idx] = modalGender;
+    seatSales[idx] = sale;
+    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
+    updateStats();
+
+    closeSeatModal();
+    showTicketView(idx, sale);
+  } catch(err){
+    console.warn('Satın alma başarısız.', err);
+    const unavailable = err && err.message && err.message.includes('SEAT_UNAVAILABLE');
+    toast(unavailable
+      ? 'Üzgünüz, bu koltuk az önce başkası tarafından alındı.'
+      : 'Satın alma başarısız — buluta bağlanılamadı.');
+    closeSeatModal();
   }
 }
 
@@ -807,10 +942,107 @@ modalClearSeatBtn.addEventListener('click', () => {
 
 seatModalClose.addEventListener('click', closeSeatModal);
 seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOverlay) closeSeatModal(); });
+
+// ===== Ticket view (QR + bilet kodu) =====
+
+function showTicketView(idx, sale){
+  document.getElementById('ticketEventName').textContent = currentEventNameBadge.textContent || '';
+  document.getElementById('ticketSeatLabel').textContent = seatLabelFor(idx);
+  document.getElementById('ticketTierLabel').textContent = `${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
+
+  const buyerEl = document.getElementById('ticketBuyerName');
+  if(sale.buyerName){
+    buyerEl.textContent = `Alıcı: ${sale.buyerName}`;
+    buyerEl.hidden = false;
+  } else {
+    buyerEl.hidden = true;
+  }
+
+  document.getElementById('ticketCodeText').textContent = sale.ticketCode || '';
+  document.getElementById('ticketCheckinStatus').textContent = sale.checkedIn
+    ? 'Giriş yapıldı'
+    : 'Henüz giriş yapılmadı';
+
+  const qrHolder = document.getElementById('ticketQrHolder');
+  qrHolder.innerHTML = '';
+  if(sale.ticketCode && typeof qrcode === 'function'){
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(sale.ticketCode);
+      qr.make();
+      qrHolder.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
+    } catch(err){
+      qrHolder.textContent = sale.ticketCode;
+    }
+  }
+
+  ticketViewOverlay.hidden = false;
+}
+
+function closeTicketView(){
+  ticketViewOverlay.hidden = true;
+}
+ticketViewClose.addEventListener('click', closeTicketView);
+ticketCloseBtn.addEventListener('click', closeTicketView);
+ticketViewOverlay.addEventListener('click', (e) => { if(e.target === ticketViewOverlay) closeTicketView(); });
+ticketPrintBtn.addEventListener('click', () => window.print());
+
+// ===== Check-in (bilet doğrula) — geçerli etkinliğin belleğe çekilmiş
+// satışları içinde kod arar; sadece Satış/Yönetici erişebilir (editor-only). =====
+
+function openCheckinModal(){
+  if(!canEdit()) return; // buton CSS ile de gizli (.editor-only) — JS'te ek kontrol
+  checkinCodeInput.value = '';
+  checkinResultEl.hidden = true;
+  checkinOverlay.hidden = false;
+  checkinCodeInput.focus();
+}
+function closeCheckinModal(){
+  checkinOverlay.hidden = true;
+}
+
+function showCheckinResult(kind, text){
+  checkinResultEl.className = `checkin-result ${kind}`;
+  checkinResultEl.textContent = text;
+  checkinResultEl.hidden = false;
+}
+
+function verifyTicket(){
+  const code = checkinCodeInput.value.trim();
+  if(!code) return;
+
+  const idx = seatSales.findIndex(s => s && s.ticketCode === code);
+  if(idx === -1){
+    showCheckinResult('error', 'Bilet bulunamadı.');
+    return;
+  }
+
+  const sale = seatSales[idx];
+  const seatLabel = seatLabelFor(idx);
+
+  if(sale.checkedIn){
+    showCheckinResult('warn', `Bu bilet zaten kullanılmış! (${seatLabel} — ${sale.label})`);
+    return;
+  }
+
+  sale.checkedIn = true;
+  if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
+  pushSalesData();
+  showCheckinResult('ok', `Giriş onaylandı: ${seatLabel} — ${sale.label}${sale.buyerName ? ' — ' + sale.buyerName : ''}`);
+}
+
+openCheckinBtn.addEventListener('click', openCheckinModal);
+checkinClose.addEventListener('click', closeCheckinModal);
+checkinOverlay.addEventListener('click', (e) => { if(e.target === checkinOverlay) closeCheckinModal(); });
+checkinVerifyBtn.addEventListener('click', verifyTicket);
+checkinCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); verifyTicket(); } });
+
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!seatModalOverlay.hidden) closeSeatModal();
   if(!createEventOverlay.hidden) closeCreateEventModal();
+  if(!ticketViewOverlay.hidden) closeTicketView();
+  if(!checkinOverlay.hidden) closeCheckinModal();
 });
 
 // ===== Filters & Search functionality =====
@@ -932,15 +1164,17 @@ function pushSalesData(){
   }, 400);
 }
 
+// Tiers artik events tablosunda (herkese acik fiyat listesi) — misafirin
+// kendi bileti kendi alabilmesi icin tier secimini gormesi gerekiyor.
 function pushTiers(){
   if(!supabaseClient || isApplyingRemote || !currentEventId) return;
   clearTimeout(pushTimerTiers);
   pushTimerTiers = setTimeout(async () => {
-    const { error } = await supabaseClient.from('event_sales').update({
+    const { error } = await supabaseClient.from('events').update({
       tiers: TICKET_TIERS,
       updated_at: new Date().toISOString(),
-    }).eq('event_id', currentEventId);
-    if(error) console.warn('Supabase (event_sales) güncelleme hatası:', error.message);
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
   }, 400);
 }
 
@@ -952,6 +1186,7 @@ function applySeatsPayload(row){
   rows = row.rows;
   seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
   if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
+  TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
   normalizeSalesLength();
 
   colsInput.value = cols;
@@ -959,6 +1194,7 @@ function applySeatsPayload(row){
   updateTotalPreview();
   renderVenueAccent();
   renderGrid();
+  renderTierList();
 
   isApplyingRemote = false;
 }
@@ -969,10 +1205,8 @@ function applySalesPayload(row){
 
   seatSales = Array.isArray(row.seat_sales) ? row.seat_sales : [];
   normalizeSalesLength();
-  TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
 
   renderGrid();
-  renderTierList();
 
   isApplyingRemote = false;
 }
@@ -1180,14 +1414,13 @@ async function createEvent(){
   try {
     const { data, error } = await supabaseClient.from('events').insert({
       name, event_date: date, venue_type: vType,
-      cols: evCols, rows: evRows, seat_states: states, status: 'active',
+      cols: evCols, rows: evRows, seat_states: states, tiers: DEFAULT_TIERS, status: 'active',
     }).select().single();
     if(error) throw error;
 
     const { error: salesError } = await supabaseClient.from('event_sales').insert({
       event_id: data.id,
       seat_sales: new Array(states.length).fill(null),
-      tiers: DEFAULT_TIERS,
     });
     if(salesError) throw salesError;
 
@@ -1227,7 +1460,7 @@ async function enterEvent(id, nameHint){
 
   gridHint.textContent = canEdit()
     ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
-    : 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
+    : 'Boş bir koltuğa tıklayarak kendi biletini satın alabilirsin.';
 
   // Reset local state before the fetch resolves so a stale previous event's
   // seats never flash on screen while this one is loading.
@@ -1263,6 +1496,11 @@ function enterApp(role){
   currentRole = role;
   sessionStorage.setItem(ROLE_SESSION_KEY, role);
   appRoot.dataset.role = role;
+  // Modaller (koltuk/bilet/check-in) DOM'da #appRoot disinda yasiyor --
+  // rol bilgisi body'de de olmali yoksa oradaki editor-only/admin-only
+  // butonlar (Koltugu Bosalt, Bileti Goruntule, Bilet Dogrula) misafirden
+  // gizlenemez.
+  document.body.dataset.role = role;
   roleBadge.textContent = role === 'admin' ? 'Yönetici' : role === 'sales' ? 'Satış' : 'Misafir';
   loginGate.hidden = true;
   appRoot.hidden = false;
@@ -1313,6 +1551,7 @@ logoutBtn.addEventListener('click', () => {
   sessionStorage.removeItem(EVENT_SESSION_KEY);
   currentRole = null;
   pendingLoginRole = null;
+  delete document.body.dataset.role;
   appRoot.hidden = true;
   loginGate.hidden = false;
   passwordRow.hidden = true;
