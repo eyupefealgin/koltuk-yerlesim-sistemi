@@ -1,7 +1,3 @@
-const STORAGE_KEY = 'koltukYerlesim.state';
-const TIERS_KEY = 'koltukYerlesim.tiers';
-const VENUE_KEY = 'koltukYerlesim.venueType';
-
 // ===== Supabase (cross-device sync) =====
 const SUPABASE_URL = 'https://bkgcudklzrvkzodlqcij.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jhO5H_R_KNEvZfqkZMdVsQ_40S_NuyZ';
@@ -18,15 +14,23 @@ let pushTimerLayout = null;
 let pushTimerVenueType = null;
 let pushTimerSalesData = null;
 let pushTimerTiers = null;
-let seatsSynced = false;
-let salesSynced = false;
 
-// Mutable — tiers can be added/removed/renamed/repriced by the user at runtime.
-let TICKET_TIERS = [
+function clearPushTimers(){
+  clearTimeout(pushTimerSeatStates);
+  clearTimeout(pushTimerLayout);
+  clearTimeout(pushTimerVenueType);
+  clearTimeout(pushTimerSalesData);
+  clearTimeout(pushTimerTiers);
+}
+
+// Ticket tiers are per-event (stored in event_sales.tiers) — this is just
+// the seed used when a new event is created / before any event is loaded.
+const DEFAULT_TIERS = [
   { id: 'standart', label: 'Standart', price: 100 },
   { id: 'vip', label: 'VIP', price: 250 },
   { id: 'ogrenci', label: 'Öğrenci', price: 60 },
 ];
+let TICKET_TIERS = [...DEFAULT_TIERS];
 
 const VENUE_TYPES = {
   sinema:  { label: 'Sinema', screenLabel: 'PERDE', shape: 'curve' },
@@ -83,6 +87,7 @@ function buildStadiumBlocks(){
 const STADIUM_BLOCKS = buildStadiumBlocks();
 
 const ROLE_SESSION_KEY = 'koltukYerlesim.role';
+const EVENT_SESSION_KEY = 'koltukYerlesim.eventId';
 // Client-side gate only — not real security, just separates the three
 // experiences (misafir/satış/yönetici). Anyone can read these in the source.
 const SALES_PASSWORD = 'satis123';
@@ -100,8 +105,35 @@ const passwordSubmit = document.getElementById('passwordSubmit');
 const loginError = document.getElementById('loginError');
 const roleBadge = document.getElementById('roleBadge');
 const logoutBtn = document.getElementById('logoutBtn');
+const resetAllBtn = document.getElementById('resetAllBtn');
 
 let currentRole = null; // 'guest' | 'sales' | 'admin'
+
+// ===== Event list =====
+const eventListView = document.getElementById('eventListView');
+const eventDetailView = document.getElementById('eventDetailView');
+const eventGridEl = document.getElementById('eventGrid');
+const eventEmptyHint = document.getElementById('eventEmptyHint');
+const createEventBtn = document.getElementById('createEventBtn');
+const createEventOverlay = document.getElementById('createEventOverlay');
+const createEventClose = document.getElementById('createEventClose');
+const newEventName = document.getElementById('newEventName');
+const newEventDate = document.getElementById('newEventDate');
+const newEventVenue = document.getElementById('newEventVenue');
+const newEventCols = document.getElementById('newEventCols');
+const newEventRows = document.getElementById('newEventRows');
+const newEventDimsRow = document.getElementById('newEventDimsRow');
+const newEventStadiumNote = document.getElementById('newEventStadiumNote');
+const submitCreateEventBtn = document.getElementById('submitCreateEventBtn');
+const backToEventsBtn = document.getElementById('backToEventsBtn');
+const currentEventNameBadge = document.getElementById('currentEventNameBadge');
+
+let events = [];
+let currentEventId = null;
+let eventsSynced = false;
+let eventsChannel = null;
+let seatsChannel = null;
+let salesChannel = null;
 
 const colsInput = document.getElementById('colsInput');
 const rowsInput = document.getElementById('rowsInput');
@@ -171,50 +203,6 @@ function livePreviewTotal(){
   totalPreview.textContent = c * r;
 }
 
-// seatSales is deliberately NOT cached here. It used to be, but that meant a
-// browser that had ever been logged in as Satış/Yönetici kept real prices in
-// localStorage — and a later Misafir session on that same browser/computer
-// would read that stale cache and show sold badges/prices it was never
-// actually sent. seatSales now only ever comes from a live Supabase fetch
-// (ensureSalesSync, canEdit() roles only) or stays null for guests.
-function saveState(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ cols, rows, seatStates }));
-}
-
-function loadState(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); }
-  catch { return null; }
-}
-
-function saveTiers(){
-  localStorage.setItem(TIERS_KEY, JSON.stringify(TICKET_TIERS));
-  pushTiers();
-}
-
-function loadTiers(){
-  try {
-    const saved = JSON.parse(localStorage.getItem(TIERS_KEY));
-    if(Array.isArray(saved) && saved.length){
-      TICKET_TIERS = saved.filter(t => t && t.id && t.label && typeof t.price === 'number');
-    }
-  } catch { /* ignore malformed storage */ }
-  if(!TICKET_TIERS.length){
-    TICKET_TIERS = [{ id: 'standart', label: 'Standart', price: 100 }];
-  }
-}
-
-function saveVenueType(){
-  localStorage.setItem(VENUE_KEY, venueType);
-  pushVenueType();
-}
-
-function loadVenueType(){
-  try {
-    const saved = localStorage.getItem(VENUE_KEY);
-    if(saved && VENUE_TYPES[saved]) venueType = saved;
-  } catch { /* ignore */ }
-}
-
 function renderVenueAccent(){
   const cfg = VENUE_TYPES[venueType] || VENUE_TYPES.sinema;
   screenAccentEl.className = `screen-curve${cfg.shape !== 'curve' ? ' ' + cfg.shape : ''}`;
@@ -233,8 +221,9 @@ function renderVenueAccent(){
 }
 
 // seatSales must always be the same length as seatStates for index alignment —
-// the two arrays are now stored in separate Supabase tables (seats vs sales)
-// and can briefly drift out of sync while both realtime updates arrive.
+// the two arrays are now stored in separate Supabase tables (events vs
+// event_sales) and can briefly drift out of sync while both realtime
+// updates arrive.
 function normalizeSalesLength(){
   const total = seatStates.length;
   if(seatSales.length !== total){
@@ -244,13 +233,7 @@ function normalizeSalesLength(){
   }
 }
 
-// skipPush=true is for the very first paint before we've ever heard from
-// Supabase (init(), when there's no local cache yet). Without it, a brand
-// new visitor — including a Misafir, who never even clicks anything —
-// would push the HTML's hardcoded default layout (10×8) to Supabase and
-// silently overwrite whatever real layout was already there, just by
-// opening the page before ensureSeatsSync() had a chance to fetch it.
-function generateGrid(preserve, skipPush){
+function generateGrid(preserve){
   clampDims();
   const total = cols * rows;
 
@@ -269,11 +252,8 @@ function generateGrid(preserve, skipPush){
   }
 
   renderGrid();
-  saveState();
-  if(!skipPush){
-    pushLayout();     // cols/rows/seat_states → seats table
-    pushSalesData();  // seat_sales reset too → sales table
-  }
+  pushLayout();     // cols/rows/seat_states → events table
+  pushSalesData();  // seat_sales reset too → event_sales table
 }
 
 function renderGrid(){
@@ -581,12 +561,11 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
   chip.addEventListener('click', () => {
     venueType = chip.dataset.venue;
     renderVenueAccent();
-    saveVenueType();
+    pushVenueType();
 
     if(isStadiumMode()){
       // renderGrid() will resize seatStates/seatSales to STADIUM_BLOCKS.length.
       renderGrid();
-      saveState();
       pushSeatStates();
       pushSalesData();
     } else if(seatStates.length !== cols * rows){
@@ -602,11 +581,10 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
   });
 });
 
-document.getElementById('resetAllBtn').addEventListener('click', () => {
+resetAllBtn.addEventListener('click', () => {
   seatStates = seatStates.map(() => 'empty');
   seatSales = seatSales.map(() => null);
   renderGrid();
-  saveState();
   pushSeatStates();
   pushSalesData();
   toast('Tüm koltuklar sıfırlandı.');
@@ -646,17 +624,17 @@ function renderTierList(){
     // seat-count field fix for why); price rounds/clamps on blur.
     nameInput.addEventListener('input', () => {
       tier.label = nameInput.value.trim() ? nameInput.value : tier.label;
-      saveTiers();
+      pushTiers();
     });
     priceInput.addEventListener('input', () => {
       const raw = Number(priceInput.value);
       tier.price = Number.isFinite(raw) && raw >= 0 ? raw : 0;
-      saveTiers();
+      pushTiers();
     });
     priceInput.addEventListener('blur', () => {
       tier.price = Math.max(0, Math.round(Number(priceInput.value) || 0));
       priceInput.value = tier.price;
-      saveTiers();
+      pushTiers();
     });
     delBtn.addEventListener('click', () => removeTier(tier.id));
 
@@ -681,7 +659,7 @@ function addTier(){
   newTierPriceInput.value = '';
 
   renderTierList();
-  saveTiers();
+  pushTiers();
   toast(`"${label}" bilet türü eklendi.`);
 }
 
@@ -694,7 +672,7 @@ function removeTier(tierId){
   TICKET_TIERS = TICKET_TIERS.filter(t => t.id !== tierId);
 
   renderTierList();
-  saveTiers();
+  pushTiers();
   toast(removed ? `"${removed.label}" bilet türü silindi.` : 'Bilet türü silindi.');
 }
 
@@ -798,7 +776,6 @@ function finalizeSeatSale(payment){
   });
 
   updateStats();
-  saveState();
   pushSeatStates();
   pushSalesData();
 
@@ -822,7 +799,6 @@ modalClearSeatBtn.addEventListener('click', () => {
   seatSales[idx] = null;
   if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
   updateStats();
-  saveState();
   pushSeatStates();
   pushSalesData();
   closeSeatModal();
@@ -831,240 +807,10 @@ modalClearSeatBtn.addEventListener('click', () => {
 
 seatModalClose.addEventListener('click', closeSeatModal);
 seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOverlay) closeSeatModal(); });
-document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && !seatModalOverlay.hidden) closeSeatModal(); });
-
-// ===== Cross-device sync (Supabase realtime) =====
-// Split into two tables on purpose:
-//   seats  — cols/rows/seat_states/venue_type — occupancy only, no pricing.
-//   sales  — seat_sales/tiers — prices, tiers, payment method.
-// Misafir only ever fetches/subscribes to `seats`, so ticket prices and
-// payment details never reach a guest's browser at all (not just hidden in
-// the UI — never sent over the wire). Satış/Yönetici sync both tables.
-
-function pushSeatStates(){
-  if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimerSeatStates);
-  pushTimerSeatStates = setTimeout(async () => {
-    const { error } = await supabaseClient.from('seats').update({
-      seat_states: seatStates,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
-  }, 400);
-}
-
-function pushLayout(){
-  if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimerLayout);
-  pushTimerLayout = setTimeout(async () => {
-    const { error } = await supabaseClient.from('seats').update({
-      cols, rows,
-      seat_states: seatStates,
-      venue_type: venueType,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
-  }, 400);
-}
-
-function pushVenueType(){
-  if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimerVenueType);
-  pushTimerVenueType = setTimeout(async () => {
-    const { error } = await supabaseClient.from('seats').update({
-      venue_type: venueType,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    if(error) console.warn('Supabase (seats) güncelleme hatası:', error.message);
-  }, 400);
-}
-
-function pushSalesData(){
-  if(!supabaseClient || isApplyingRemote || !canEdit()) return;
-  clearTimeout(pushTimerSalesData);
-  pushTimerSalesData = setTimeout(async () => {
-    const { error } = await supabaseClient.from('sales').update({
-      seat_sales: seatSales,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    if(error) console.warn('Supabase (sales) güncelleme hatası:', error.message);
-  }, 400);
-}
-
-function pushTiers(){
-  if(!supabaseClient || isApplyingRemote) return;
-  clearTimeout(pushTimerTiers);
-  pushTimerTiers = setTimeout(async () => {
-    const { error } = await supabaseClient.from('sales').update({
-      tiers: TICKET_TIERS,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    if(error) console.warn('Supabase (sales) güncelleme hatası:', error.message);
-  }, 400);
-}
-
-function applySeatsPayload(row){
-  if(!row) return;
-  isApplyingRemote = true;
-
-  cols = row.cols;
-  rows = row.rows;
-  seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
-  if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
-  normalizeSalesLength();
-
-  colsInput.value = cols;
-  rowsInput.value = rows;
-  updateTotalPreview();
-  renderVenueAccent();
-  renderGrid();
-  saveState();
-  localStorage.setItem(VENUE_KEY, venueType);
-
-  isApplyingRemote = false;
-}
-
-function applySalesPayload(row){
-  if(!row) return;
-  isApplyingRemote = true;
-
-  seatSales = Array.isArray(row.seat_sales) ? row.seat_sales : [];
-  normalizeSalesLength();
-  if(Array.isArray(row.tiers) && row.tiers.length) TICKET_TIERS = row.tiers;
-
-  renderGrid();
-  renderTierList();
-  saveState();
-  localStorage.setItem(TIERS_KEY, JSON.stringify(TICKET_TIERS));
-
-  isApplyingRemote = false;
-}
-
-function subscribeSeatsRealtime(){
-  supabaseClient
-    .channel('seats_changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seats', filter: 'id=eq.1' },
-      (payload) => applySeatsPayload(payload.new))
-    .subscribe();
-}
-
-function subscribeSalesRealtime(){
-  supabaseClient
-    .channel('sales_changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sales', filter: 'id=eq.1' },
-      (payload) => applySalesPayload(payload.new))
-    .subscribe();
-}
-
-async function ensureSeatsSync(){
-  if(seatsSynced || !supabaseClient) return;
-  seatsSynced = true;
-  try {
-    const { data, error } = await supabaseClient.from('seats').select('*').eq('id', 1).maybeSingle();
-    if(error) throw error;
-
-    if(!data){
-      await supabaseClient.from('seats').insert({
-        id: 1, cols, rows, seat_states: seatStates, venue_type: venueType,
-      });
-    } else {
-      applySeatsPayload(data);
-    }
-
-    subscribeSeatsRealtime();
-  } catch(err){
-    console.warn('Supabase (seats) bağlantısı kurulamadı, yerel modda devam ediliyor.', err);
-    toast('Buluta bağlanılamadı — yerel modda çalışılıyor.');
-  }
-}
-
-async function ensureSalesSync(){
-  if(salesSynced || !supabaseClient) return;
-  salesSynced = true;
-  try {
-    const { data, error } = await supabaseClient.from('sales').select('*').eq('id', 1).maybeSingle();
-    if(error) throw error;
-
-    if(!data){
-      await supabaseClient.from('sales').insert({
-        id: 1, seat_sales: seatSales, tiers: TICKET_TIERS,
-      });
-    } else {
-      applySalesPayload(data);
-    }
-
-    subscribeSalesRealtime();
-  } catch(err){
-    console.warn('Supabase (sales) bağlantısı kurulamadı.', err);
-  }
-}
-
-// ===== Login / role gate (misafir / satış / yönetici) =====
-
-function enterApp(role){
-  currentRole = role;
-  sessionStorage.setItem(ROLE_SESSION_KEY, role);
-  appRoot.dataset.role = role;
-  roleBadge.textContent = role === 'admin' ? 'Yönetici' : role === 'sales' ? 'Satış' : 'Misafir';
-  seatGrid.classList.toggle('guest-mode', !canEdit());
-  loginGate.hidden = true;
-  appRoot.hidden = false;
-
-  gridHint.textContent = canEdit()
-    ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
-    : 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
-
-  ensureSeatsSync();
-  if(canEdit()) ensureSalesSync();
-}
-
-guestLoginBtn.addEventListener('click', () => enterApp('guest'));
-
-function showPasswordRow(role){
-  pendingLoginRole = role;
-  passwordRow.hidden = false;
-  loginError.hidden = true;
-  passwordInput.value = '';
-  passwordInput.focus();
-}
-salesLoginBtn.addEventListener('click', () => showPasswordRow('sales'));
-adminLoginBtn.addEventListener('click', () => showPasswordRow('admin'));
-
-function tryPasswordLogin(){
-  const expected = pendingLoginRole === 'admin' ? ADMIN_PASSWORD : SALES_PASSWORD;
-  if(passwordInput.value === expected){
-    loginError.hidden = true;
-    passwordInput.value = '';
-    enterApp(pendingLoginRole);
-  } else {
-    loginError.hidden = false;
-  }
-}
-passwordSubmit.addEventListener('click', tryPasswordLogin);
-passwordInput.addEventListener('keydown', (e) => {
-  if(e.key === 'Enter'){
-    e.preventDefault();
-    tryPasswordLogin();
-  }
-});
-
-logoutBtn.addEventListener('click', () => {
-  sessionStorage.removeItem(ROLE_SESSION_KEY);
-  currentRole = null;
-  pendingLoginRole = null;
-  appRoot.hidden = true;
-  loginGate.hidden = false;
-  passwordRow.hidden = true;
-  passwordInput.value = '';
-  loginError.hidden = true;
-  setBulkMode(false);
-
-  // Wipe any sales data pulled in during a privileged session — otherwise,
-  // without a page reload, a guest login right after in the same tab would
-  // still see it sitting in memory even though it's never fetched for guests.
-  seatSales = new Array(seatStates.length).fill(null);
-  salesSynced = false;
-  renderGrid();
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  if(!seatModalOverlay.hidden) closeSeatModal();
+  if(!createEventOverlay.hidden) closeCreateEventModal();
 });
 
 // ===== Filters & Search functionality =====
@@ -1128,11 +874,467 @@ function applyFilterAndSearch(){
   });
 }
 
-// Init: restore previous session or default grid
-(function init(){
-  loadTiers();
+// ===== Cross-device sync (Supabase realtime), scoped to the current event =====
+// Split into two tables on purpose:
+//   events       — cols/rows/seat_states/venue_type per event — occupancy only, no pricing.
+//   event_sales  — seat_sales/tiers per event — prices, tiers, payment method.
+// Misafir only ever fetches/subscribes to `events`, so ticket prices and
+// payment details never reach a guest's browser at all (not just hidden in
+// the UI — never sent over the wire). Satış/Yönetici sync both tables.
+
+function pushSeatStates(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerSeatStates);
+  pushTimerSeatStates = setTimeout(async () => {
+    const { error } = await supabaseClient.from('events').update({
+      seat_states: seatStates,
+      updated_at: new Date().toISOString(),
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushLayout(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerLayout);
+  pushTimerLayout = setTimeout(async () => {
+    const { error } = await supabaseClient.from('events').update({
+      cols, rows,
+      seat_states: seatStates,
+      venue_type: venueType,
+      updated_at: new Date().toISOString(),
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushVenueType(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerVenueType);
+  pushTimerVenueType = setTimeout(async () => {
+    const { error } = await supabaseClient.from('events').update({
+      venue_type: venueType,
+      updated_at: new Date().toISOString(),
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushSalesData(){
+  if(!supabaseClient || isApplyingRemote || !canEdit() || !currentEventId) return;
+  clearTimeout(pushTimerSalesData);
+  pushTimerSalesData = setTimeout(async () => {
+    const { error } = await supabaseClient.from('event_sales').update({
+      seat_sales: seatSales,
+      updated_at: new Date().toISOString(),
+    }).eq('event_id', currentEventId);
+    if(error) console.warn('Supabase (event_sales) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function pushTiers(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerTiers);
+  pushTimerTiers = setTimeout(async () => {
+    const { error } = await supabaseClient.from('event_sales').update({
+      tiers: TICKET_TIERS,
+      updated_at: new Date().toISOString(),
+    }).eq('event_id', currentEventId);
+    if(error) console.warn('Supabase (event_sales) güncelleme hatası:', error.message);
+  }, 400);
+}
+
+function applySeatsPayload(row){
+  if(!row) return;
+  isApplyingRemote = true;
+
+  cols = row.cols;
+  rows = row.rows;
+  seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
+  if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
+  normalizeSalesLength();
+
+  colsInput.value = cols;
+  rowsInput.value = rows;
+  updateTotalPreview();
+  renderVenueAccent();
+  renderGrid();
+
+  isApplyingRemote = false;
+}
+
+function applySalesPayload(row){
+  if(!row) return;
+  isApplyingRemote = true;
+
+  seatSales = Array.isArray(row.seat_sales) ? row.seat_sales : [];
+  normalizeSalesLength();
+  TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
+
+  renderGrid();
   renderTierList();
-  loadVenueType();
+
+  isApplyingRemote = false;
+}
+
+function subscribeSeatsRealtime(eventId){
+  seatsChannel = supabaseClient
+    .channel(`event_seats_${eventId}`)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
+      (payload) => applySeatsPayload(payload.new))
+    .subscribe();
+}
+
+function subscribeSalesRealtime(eventId){
+  salesChannel = supabaseClient
+    .channel(`event_sales_${eventId}`)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_sales', filter: `event_id=eq.${eventId}` },
+      (payload) => applySalesPayload(payload.new))
+    .subscribe();
+}
+
+function unsubscribeEventChannels(){
+  if(seatsChannel){ supabaseClient.removeChannel(seatsChannel); seatsChannel = null; }
+  if(salesChannel){ supabaseClient.removeChannel(salesChannel); salesChannel = null; }
+}
+
+async function ensureEventSeatsSync(eventId){
+  try {
+    const { data, error } = await supabaseClient.from('events').select('*').eq('id', eventId).maybeSingle();
+    if(error) throw error;
+    if(data) applySeatsPayload(data);
+    subscribeSeatsRealtime(eventId);
+  } catch(err){
+    console.warn('Supabase (events) bağlantısı kurulamadı.', err);
+    toast('Buluta bağlanılamadı — yerel modda çalışılıyor.');
+  }
+}
+
+async function ensureEventSalesSync(eventId){
+  try {
+    const { data, error } = await supabaseClient.from('event_sales').select('*').eq('event_id', eventId).maybeSingle();
+    if(error) throw error;
+    if(data) applySalesPayload(data);
+    subscribeSalesRealtime(eventId);
+  } catch(err){
+    console.warn('Supabase (event_sales) bağlantısı kurulamadı.', err);
+  }
+}
+
+// ===== Events list (the "which event am I managing" layer) =====
+
+function computeOccupancy(ev){
+  const states = Array.isArray(ev.seat_states) ? ev.seat_states : [];
+  const total = states.length;
+  const filled = states.filter(s => s && s !== 'empty').length;
+  const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+  return { total, filled, pct };
+}
+
+function formatEventDate(dateStr){
+  if(!dateStr) return 'Tarih belirtilmedi';
+  try {
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
+function renderEventList(){
+  eventGridEl.innerHTML = '';
+  eventEmptyHint.hidden = events.length > 0;
+
+  const sorted = [...events].sort((a, b) => {
+    if(a.status !== b.status) return a.status === 'archived' ? 1 : -1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  sorted.forEach(ev => {
+    const { total, pct } = computeOccupancy(ev);
+    const venueLabel = (VENUE_TYPES[ev.venue_type] || VENUE_TYPES.sinema).label;
+    const statusLabel = ev.status === 'archived' ? 'Arşivlendi' : 'Aktif';
+
+    const card = document.createElement('div');
+    card.className = 'event-card';
+    card.dataset.status = ev.status;
+
+    card.innerHTML = `
+      <div class="event-card-top">
+        <span class="event-venue-badge"></span>
+        <span class="event-status-badge" data-status="${ev.status}"></span>
+      </div>
+      <h3 class="event-card-name"></h3>
+      <p class="event-card-date"></p>
+      <div class="event-card-occupancy">
+        <div class="capacity-bar-bg"><div class="capacity-bar" style="width:${pct}%"></div></div>
+        <span>%${pct} dolu · ${total} koltuk</span>
+      </div>
+      <div class="event-card-actions">
+        <button class="btn btn-gold btn-sm event-enter-btn" type="button">Gir</button>
+        <button class="btn btn-ghost btn-sm admin-only event-archive-btn" type="button"></button>
+        <button class="btn btn-ghost btn-sm admin-only event-delete-btn" type="button">Sil</button>
+      </div>
+    `;
+    // textContent (not innerHTML) for anything derived from user-entered
+    // event names — avoids injecting HTML from an admin-typed event name.
+    card.querySelector('.event-venue-badge').textContent = venueLabel;
+    card.querySelector('.event-status-badge').textContent = statusLabel;
+    card.querySelector('.event-card-name').textContent = ev.name;
+    card.querySelector('.event-card-date').textContent = formatEventDate(ev.event_date);
+    card.querySelector('.event-archive-btn').textContent = ev.status === 'archived' ? 'Aktifleştir' : 'Arşivle';
+
+    card.querySelector('.event-enter-btn').addEventListener('click', () => enterEvent(ev.id, ev.name));
+    card.querySelector('.event-archive-btn').addEventListener('click', () => toggleArchiveEvent(ev));
+    card.querySelector('.event-delete-btn').addEventListener('click', () => deleteEventRow(ev));
+
+    eventGridEl.appendChild(card);
+  });
+}
+
+async function loadEvents(){
+  try {
+    const { data, error } = await supabaseClient.from('events').select('*').order('created_at', { ascending: false });
+    if(error) throw error;
+    events = data || [];
+    renderEventList();
+  } catch(err){
+    console.warn('Etkinlikler yüklenemedi.', err);
+    toast('Etkinlikler yüklenemedi — buluta bağlanılamadı.');
+  }
+}
+
+function subscribeEventsRealtime(){
+  eventsChannel = supabaseClient
+    .channel('events_list_changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => loadEvents())
+    .subscribe();
+}
+
+async function ensureEventsSync(){
+  if(eventsSynced || !supabaseClient) return;
+  eventsSynced = true;
+  await loadEvents();
+  subscribeEventsRealtime();
+}
+
+async function toggleArchiveEvent(ev){
+  const newStatus = ev.status === 'archived' ? 'active' : 'archived';
+  const { error } = await supabaseClient.from('events').update({
+    status: newStatus,
+    updated_at: new Date().toISOString(),
+  }).eq('id', ev.id);
+  if(error){ toast('İşlem başarısız.'); return; }
+  toast(newStatus === 'archived' ? 'Etkinlik arşivlendi.' : 'Etkinlik aktifleştirildi.');
+}
+
+async function deleteEventRow(ev){
+  if(!confirm(`"${ev.name}" etkinliğini kalıcı olarak silmek istediğine emin misin? Bu işlem geri alınamaz.`)) return;
+  const { error } = await supabaseClient.from('events').delete().eq('id', ev.id);
+  if(error){ toast('Silinemedi.'); return; }
+  toast(`"${ev.name}" silindi.`);
+  if(currentEventId === ev.id) exitEvent();
+}
+
+function toggleNewEventDimsVisibility(){
+  const isFutbol = newEventVenue.value === 'futbol';
+  newEventDimsRow.hidden = isFutbol;
+  newEventStadiumNote.hidden = !isFutbol;
+}
+
+function openCreateEventModal(){
+  newEventName.value = '';
+  newEventDate.value = '';
+  newEventVenue.value = 'sinema';
+  newEventCols.value = 10;
+  newEventRows.value = 8;
+  toggleNewEventDimsVisibility();
+  createEventOverlay.hidden = false;
+  newEventName.focus();
+}
+
+function closeCreateEventModal(){
+  createEventOverlay.hidden = true;
+}
+
+async function createEvent(){
+  const name = newEventName.value.trim();
+  if(!name){
+    toast('Etkinlik adı gir.');
+    return;
+  }
+  const date = newEventDate.value || null;
+  const vType = newEventVenue.value;
+
+  let evCols, evRows, states;
+  if(vType === 'futbol'){
+    evCols = STADIUM_BLOCKS.length;
+    evRows = 1;
+    states = new Array(STADIUM_BLOCKS.length).fill('empty');
+  } else {
+    evCols = Math.min(40, Math.max(1, Number(newEventCols.value) || 10));
+    evRows = Math.min(30, Math.max(1, Number(newEventRows.value) || 8));
+    states = new Array(evCols * evRows).fill('empty');
+  }
+
+  submitCreateEventBtn.disabled = true;
+  try {
+    const { data, error } = await supabaseClient.from('events').insert({
+      name, event_date: date, venue_type: vType,
+      cols: evCols, rows: evRows, seat_states: states, status: 'active',
+    }).select().single();
+    if(error) throw error;
+
+    const { error: salesError } = await supabaseClient.from('event_sales').insert({
+      event_id: data.id,
+      seat_sales: new Array(states.length).fill(null),
+      tiers: DEFAULT_TIERS,
+    });
+    if(salesError) throw salesError;
+
+    closeCreateEventModal();
+    toast(`"${name}" etkinliği oluşturuldu.`);
+    enterEvent(data.id, data.name);
+  } catch(err){
+    console.warn('Etkinlik oluşturulamadı.', err);
+    toast('Etkinlik oluşturulamadı — buluta bağlanılamadı.');
+  } finally {
+    submitCreateEventBtn.disabled = false;
+  }
+}
+
+createEventBtn.addEventListener('click', openCreateEventModal);
+createEventClose.addEventListener('click', closeCreateEventModal);
+createEventOverlay.addEventListener('click', (e) => { if(e.target === createEventOverlay) closeCreateEventModal(); });
+newEventVenue.addEventListener('change', toggleNewEventDimsVisibility);
+submitCreateEventBtn.addEventListener('click', createEvent);
+
+// ===== Entering / leaving an event =====
+
+async function enterEvent(id, nameHint){
+  clearPushTimers();
+  unsubscribeEventChannels();
+  setBulkMode(false);
+  bulkSelected.clear();
+
+  currentEventId = id;
+  sessionStorage.setItem(EVENT_SESSION_KEY, id);
+
+  const ev = nameHint ? { name: nameHint } : events.find(e => e.id === id);
+  currentEventNameBadge.textContent = ev ? ev.name : '';
+  currentEventNameBadge.hidden = false;
+  backToEventsBtn.hidden = false;
+  resetAllBtn.hidden = !canEdit();
+
+  gridHint.textContent = canEdit()
+    ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
+    : 'Misafir modundasın — koltukları görüntüleyebilirsin, değişiklik yapamazsın.';
+
+  // Reset local state before the fetch resolves so a stale previous event's
+  // seats never flash on screen while this one is loading.
+  seatStates = [];
+  seatSales = [];
+  seatButtons = [];
+  TICKET_TIERS = [...DEFAULT_TIERS];
+
+  eventListView.hidden = true;
+  eventDetailView.hidden = false;
+
+  await ensureEventSeatsSync(id);
+  if(canEdit()) await ensureEventSalesSync(id);
+}
+
+function exitEvent(){
+  clearPushTimers();
+  unsubscribeEventChannels();
+  currentEventId = null;
+  sessionStorage.removeItem(EVENT_SESSION_KEY);
+
+  backToEventsBtn.hidden = true;
+  currentEventNameBadge.hidden = true;
+  eventDetailView.hidden = true;
+  eventListView.hidden = false;
+}
+
+backToEventsBtn.addEventListener('click', exitEvent);
+
+// ===== Login / role gate (misafir / satış / yönetici) =====
+
+function enterApp(role){
+  currentRole = role;
+  sessionStorage.setItem(ROLE_SESSION_KEY, role);
+  appRoot.dataset.role = role;
+  roleBadge.textContent = role === 'admin' ? 'Yönetici' : role === 'sales' ? 'Satış' : 'Misafir';
+  loginGate.hidden = true;
+  appRoot.hidden = false;
+
+  ensureEventsSync();
+
+  const savedEventId = sessionStorage.getItem(EVENT_SESSION_KEY);
+  if(savedEventId){
+    enterEvent(savedEventId);
+  } else {
+    eventListView.hidden = false;
+    eventDetailView.hidden = true;
+  }
+}
+
+guestLoginBtn.addEventListener('click', () => enterApp('guest'));
+
+function showPasswordRow(role){
+  pendingLoginRole = role;
+  passwordRow.hidden = false;
+  loginError.hidden = true;
+  passwordInput.value = '';
+  passwordInput.focus();
+}
+salesLoginBtn.addEventListener('click', () => showPasswordRow('sales'));
+adminLoginBtn.addEventListener('click', () => showPasswordRow('admin'));
+
+function tryPasswordLogin(){
+  const expected = pendingLoginRole === 'admin' ? ADMIN_PASSWORD : SALES_PASSWORD;
+  if(passwordInput.value === expected){
+    loginError.hidden = true;
+    passwordInput.value = '';
+    enterApp(pendingLoginRole);
+  } else {
+    loginError.hidden = false;
+  }
+}
+passwordSubmit.addEventListener('click', tryPasswordLogin);
+passwordInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    tryPasswordLogin();
+  }
+});
+
+logoutBtn.addEventListener('click', () => {
+  sessionStorage.removeItem(ROLE_SESSION_KEY);
+  sessionStorage.removeItem(EVENT_SESSION_KEY);
+  currentRole = null;
+  pendingLoginRole = null;
+  appRoot.hidden = true;
+  loginGate.hidden = false;
+  passwordRow.hidden = true;
+  passwordInput.value = '';
+  loginError.hidden = true;
+  setBulkMode(false);
+
+  clearPushTimers();
+  unsubscribeEventChannels();
+  if(eventsChannel){ supabaseClient.removeChannel(eventsChannel); eventsChannel = null; }
+  eventsSynced = false;
+  events = [];
+  currentEventId = null;
+
+  // Wipe any sales data pulled in during a privileged session — otherwise,
+  // without a page reload, a guest login right after in the same tab would
+  // still see it sitting in memory even though it's never fetched for guests.
+  seatSales = new Array(seatStates.length).fill(null);
+});
+
+// Init: restore previous session (role + last-open event), otherwise show the login gate
+(function init(){
   setupFilters();
 
   const searchInput = document.getElementById('seatSearchInput');
@@ -1152,24 +1354,6 @@ function applyFilterAndSearch(){
       searchInput.value = '';
       applyFilterAndSearch();
     });
-  }
-
-  const saved = loadState();
-  if(saved && saved.cols && saved.rows && Array.isArray(saved.seatStates)){
-    cols = saved.cols;
-    rows = saved.rows;
-    seatStates = saved.seatStates;
-    // Always start clean, never from cache — see the note on saveState().
-    seatSales = new Array(seatStates.length).fill(null);
-    colsInput.value = cols;
-    rowsInput.value = rows;
-    updateTotalPreview();
-    renderVenueAccent();
-    renderGrid();
-  } else {
-    updateTotalPreview();
-    renderVenueAccent();
-    generateGrid(false, true); // skipPush — see the comment on generateGrid()
   }
 
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);

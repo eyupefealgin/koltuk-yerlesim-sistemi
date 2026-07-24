@@ -49,14 +49,25 @@
       <span>Koltuk Yerleşim Sistemi</span>
     </div>
     <div class="topbar-actions">
+      <button class="btn btn-ghost" id="backToEventsBtn" type="button" hidden>← Etkinlikler</button>
+      <span class="event-name-badge" id="currentEventNameBadge" hidden></span>
       <span class="role-badge" id="roleBadge">Misafir</span>
-      <button class="btn btn-ghost admin-only" id="resetAllBtn" type="button">Tümünü Sıfırla</button>
+      <button class="btn btn-ghost admin-only" id="resetAllBtn" type="button" hidden>Tümünü Sıfırla</button>
       <button class="btn btn-ghost" id="logoutBtn" type="button">Çıkış</button>
     </div>
   </div>
 </header>
 
-<main class="page">
+<div class="event-list-view" id="eventListView">
+  <div class="event-list-header">
+    <h2>Etkinlikler</h2>
+    <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
+  </div>
+  <p class="event-empty-hint" id="eventEmptyHint" hidden>Henüz etkinlik yok.</p>
+  <div class="event-grid" id="eventGrid"></div>
+</div>
+
+<main class="page" id="eventDetailView" hidden>
 
   <section class="panel settings-panel admin-only">
     <div id="layoutControls">
@@ -222,6 +233,51 @@
       <p class="modal-subhead">Koltuk Bilgisi</p>
       <p class="modal-info-text" id="modalInfoText"></p>
       <button class="btn btn-ghost-gold" id="modalClearSeatBtn" type="button">Koltuğu Boşalt</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CREATE EVENT MODAL ============ -->
+<div class="modal-overlay" id="createEventOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createEventTitle">
+    <button class="modal-close" id="createEventClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="createEventTitle">Yeni Etkinlik</h3>
+
+    <div class="event-form">
+      <label class="field">
+        <span>Etkinlik Adı</span>
+        <input type="text" id="newEventName" maxlength="60" placeholder="ör. Interstellar Gösterimi">
+      </label>
+      <label class="field">
+        <span>Tarih</span>
+        <input type="date" id="newEventDate">
+      </label>
+      <label class="field">
+        <span>Etkinlik Türü</span>
+        <select id="newEventVenue">
+          <option value="sinema">Sinema</option>
+          <option value="tiyatro">Tiyatro</option>
+          <option value="konser">Konser / Etkinlik</option>
+          <option value="futbol">Futbol Sahası</option>
+          <option value="genel">Genel Etkinlik</option>
+        </select>
+      </label>
+      <div class="settings-row" id="newEventDimsRow">
+        <label class="field">
+          <span>Sütun Sayısı</span>
+          <input type="number" id="newEventCols" min="1" max="40" value="10">
+        </label>
+        <label class="field">
+          <span>Satır Sayısı</span>
+          <input type="number" id="newEventRows" min="1" max="30" value="8">
+        </label>
+      </div>
+      <p class="stadium-note" id="newEventStadiumNote" hidden>Futbol Sahası için sabit 44 bloklu stadyum düzeni kullanılır.</p>
+      <button class="btn btn-primary" id="submitCreateEventBtn" type="button">Etkinliği Oluştur</button>
     </div>
   </div>
 </div>
