@@ -9,7 +9,10 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 - **Çoklu etkinlik**: giriş yaptıktan sonra bir **Etkinlikler** listesi karşılıyor — her etkinliğin kendi adı, tarihi, türü, koltuk düzeni, bilet türleri/fiyatları ve satışları var. Yönetici "+ Yeni Etkinlik" ile oluşturur/arşivler/siler, herkes listeden birine girip görüntüleyebilir/satın alabilir. Kartlarda canlı doluluk yüzdesi görünür
 - **3 rol**: **Misafir** (şifresiz, kendi biletini kendi satın alabilir) · **Satış** (kendi şifresi, gişeden koltuk satar) · **Yönetici** (kendi şifresi, her şeye erişir: etkinlik/düzen/bilet türü yönetimi, sıfırlama)
 - **Misafirin kendi bileti kendi alması**: boş bir koltuğa tıklayıp cinsiyet → bilet türü → ad soyad → ödeme yöntemi seçerek kendi biletini satın alabilir. İki farklı misafir aynı koltuğa aynı anda tıklarsa, atomik bir veritabanı fonksiyonu (`purchase_seat`) sayesinde sadece biri başarılı olur, diğerine "bu koltuk az önce alındı" uyarısı gösterilir
+- **Rezervasyon sayacı (sepet zamanlayıcısı)**: bir koltuğa tıklanınca 5 dakikalığına o kullanıcı için kilitlenir (`reserve_seat`), modalda canlı geri sayım gösterilir; süre dolar ya da vazgeçilirse (modal kapatılırsa) otomatik serbest kalır, başka biri o koltuğa aynı anda bakıyorsa "az önce tutuldu" uyarısı verilir
 - **QR kodlu bilet**: her satışta (gişeden veya misafirden) benzersiz bir bilet kodu + QR kod üretilir; satış sonrası otomatik gösterilir, yazdırılabilir. Personel, dolu bir koltuğun bilgisinden "Bileti Görüntüle" ile bileti tekrar açabilir
+- **Biletim Var**: etkinlik listesi ekranından, misafir bilet kodunu girerek daha önce aldığı bileti (QR dahil) tekrar bulup görüntüleyebilir/yazdırabilir
+- **İndirim kodu**: Yönetici etkinlik başına yüzde veya sabit tutarlı, opsiyonel kullanım limitli kodlar tanımlayabilir; satın alma sırasında kod girilip fiyat anında güncellenir, kullanım sayısı atomik olarak artar (aynı kod aynı anda iki kez kullanılamaz)
 - **Bilet Doğrula (check-in)**: Satış/Yönetici, bilet kodunu girerek girişte bileti "kullanıldı" olarak işaretleyebilir; aynı bilet ikinci kez okutulursa uyarı verir, geçersiz kod için "bulunamadı" der — sadece geçerli etkinliğin belleğe alınmış satışları içinde arar
 - **Etkinlik türü**: her etkinlik için Sinema / Tiyatro / Konser / Futbol Sahası / Genel Etkinlik seçilir — üstteki "PERDE/SAHNE/ALAN" alanı türe göre şekil ve etiket değiştirir
 - **Futbol Sahası düzeni**: sayısal koltuk yerine sabit bir stadyum şeması — ortada saha, etrafında Doğu/Batı/Kuzey/Güney tribün blokları (iç+dış katman) + VIP/Misafir/Basın/Protokol köşe blokları (44 blok). Sütun/satır ayarı bu türde geçerli değil; diğer türler normal koltuk ızgarasını kullanır
@@ -26,8 +29,8 @@ HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode
 
 ## Kurulum
 
-1. `supabase-setup.sql` dosyasındaki SQL'in **tamamını** Supabase projenin **SQL Editor**'ünde çalıştır — `events`/`event_sales` tablolarını, `purchase_seat` fonksiyonunu oluşturur. Script baştan sona tekrar tekrar çalıştırılabilir (idempotent), daha önce kısmen çalıştırdıysan sorun olmaz
-2. Her iki tabloda da **Row Level Security kapalı** olmalı (anon key ile okuma/yazma için) — açık gelirse: `alter table events disable row level security; alter table event_sales disable row level security;`
+1. `supabase-setup.sql` dosyasındaki SQL'in **tamamını** Supabase projenin **SQL Editor**'ünde çalıştır — `events`/`event_sales`/`seat_holds` tablolarını, `purchase_seat`/`reserve_seat`/`release_seat_hold`/`redeem_discount_code` fonksiyonlarını oluşturur. Script baştan sona tekrar tekrar çalıştırılabilir (idempotent), daha önce kısmen çalıştırdıysan sorun olmaz
+2. Üç tabloda da (**events**, **event_sales**, **seat_holds**) **Row Level Security kapalı** olmalı (anon key ile okuma/yazma için) — açık gelirse: `alter table events disable row level security; alter table event_sales disable row level security; alter table seat_holds disable row level security;`
 3. `script.js` içindeki `SUPABASE_URL` / `SUPABASE_KEY` değerlerini kendi projenle değiştir
 4. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
 
@@ -47,3 +50,5 @@ sonra `http://localhost:5175` adresine git.
 - Eski tek-etkinlikli sürümden (`seats`, `sales` — sabit tek satırlı tablolar) geçiş yapıldı; bu iki tablo artık kullanılmıyor, istersen elle silebilirsin (`drop table if exists seats; drop table if exists sales;`).
 - Etkinlik silme kalıcıdır ve o etkinliğin satış verisini de (`event_sales`, cascade ile) siler — geri alınamaz.
 - Bilet kodları (`TKT-...`) kriptografik değil, gerçek kullanıcı doğrulaması (Supabase Auth) yok — sistem, kağıt bir bilet kadar güvenli: kodu bilen/QR'ı okutan biri check-in yapabilir.
+- Rezervasyon kilidi ve atomik satın alma sadece **tekli** satın alma akışında (misafir + personelin tek koltuk satışı) çalışır; personelin "Çoklu Seçim" ile toplu satışı bu kilide tabi değildir (düşük risk, tek operatörlük personel senaryosu).
+- İndirim kodu `redeem_discount_code` ile atomik olarak "kullanılır" (kullanım sayacı hemen artar) — kod uygulanıp satın alma tamamlanmazsa (kullanıcı vazgeçerse) o hak boşa gitmiş olur; hobi ölçekli bir uygulama için kabul edilebilir bir sınırlama.

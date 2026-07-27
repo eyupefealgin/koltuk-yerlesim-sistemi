@@ -61,7 +61,10 @@
 <div class="event-list-view" id="eventListView">
   <div class="event-list-header">
     <h2>Etkinlikler</h2>
-    <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
+    <div class="event-list-header-actions">
+      <button class="btn btn-ghost-gold" id="openMyTicketBtn" type="button">Biletim Var</button>
+      <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
+    </div>
   </div>
   <p class="event-empty-hint" id="eventEmptyHint" hidden>Henüz etkinlik yok.</p>
   <div class="event-grid" id="eventGrid"></div>
@@ -115,6 +118,21 @@
         <input type="text" id="newTierName" placeholder="Yeni bilet türü (ör. Engelli)" maxlength="20">
         <input type="number" id="newTierPrice" placeholder="Fiyat (₺)" min="0" step="1">
         <button class="btn btn-primary btn-sm" id="addTierBtn" type="button">+ Ekle</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">İndirim Kodları:</span>
+      <div class="discount-list" id="discountList"></div>
+      <div class="discount-add-row">
+        <input type="text" id="newDiscountCode" placeholder="Kod (ör. ERKEN10)" maxlength="20">
+        <select id="newDiscountType">
+          <option value="percent">%</option>
+          <option value="fixed">₺</option>
+        </select>
+        <input type="number" id="newDiscountValue" placeholder="Değer" min="0" step="1">
+        <input type="number" id="newDiscountMaxUses" placeholder="Limit (opsiyonel)" min="1" step="1">
+        <button class="btn btn-primary btn-sm" id="addDiscountBtn" type="button">+ Ekle</button>
       </div>
     </div>
   </section>
@@ -208,6 +226,7 @@
       </svg>
     </button>
     <h3 id="seatModalTitle">Koltuk</h3>
+    <p class="hold-countdown" id="holdCountdown" hidden></p>
 
     <div class="modal-step-panel" data-panel="gender">
       <p class="modal-subhead">1. Cinsiyet Seç</p>
@@ -232,6 +251,14 @@
     <div class="modal-step-panel" data-panel="payment" hidden>
       <p class="modal-subhead">4. Ödeme Yöntemi</p>
       <p class="payment-disclaimer" id="paymentDisclaimer" hidden>Bu demo bir sistemdir — seçim sadece kayıt amaçlıdır, gerçek bir ödeme alınmaz.</p>
+
+      <div class="discount-row">
+        <input type="text" id="discountCodeInput" placeholder="İndirim Kodu (opsiyonel)" maxlength="30">
+        <button class="btn btn-ghost-gold btn-sm" id="applyDiscountBtn" type="button">Uygula</button>
+      </div>
+      <p class="discount-note" id="discountNoteText" hidden></p>
+      <p class="price-summary" id="priceSummaryText"></p>
+
       <div class="modal-choice-row">
         <button class="choice-btn" data-payment="kart" type="button">Kart</button>
         <button class="choice-btn" data-payment="nakit" type="button">Nakit</button>
@@ -335,6 +362,25 @@
       <input type="text" id="checkinCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
       <button class="btn btn-primary" id="checkinVerifyBtn" type="button">Doğrula</button>
       <div class="checkin-result" id="checkinResult" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BİLETİM VAR MODAL ============ -->
+<div class="modal-overlay" id="myTicketOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myTicketTitle">
+    <button class="modal-close" id="myTicketClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="myTicketTitle">Biletim Var</h3>
+    <p class="buyer-note">Satın alırken sana gösterilen bilet kodunu gir.</p>
+
+    <div class="checkin-form">
+      <input type="text" id="myTicketCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
+      <button class="btn btn-primary" id="myTicketFindBtn" type="button">Bul</button>
+      <div class="checkin-result" id="myTicketResult" hidden></div>
     </div>
   </div>
 </div>

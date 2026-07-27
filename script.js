@@ -98,6 +98,21 @@ const STADIUM_BLOCKS = buildStadiumBlocks();
 
 const ROLE_SESSION_KEY = 'koltukYerlesim.role';
 const EVENT_SESSION_KEY = 'koltukYerlesim.eventId';
+const HOLD_TOKEN_KEY = 'koltukYerlesim.holdToken';
+const HOLD_TTL_SECONDS = 300; // 5 dakika — reserve_seat()'in varsayılanıyla aynı
+
+// Bu sekmeye özel, kalıcı bir rezervasyon jetonu — reserve_seat/purchase_seat
+// bir koltuğun bu sekim mi yoksa başkasının mı tarafından tutulduğunu bu
+// jetonla ayırt ediyor.
+function getHoldToken(){
+  let token = sessionStorage.getItem(HOLD_TOKEN_KEY);
+  if(!token){
+    token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(HOLD_TOKEN_KEY, token);
+  }
+  return token;
+}
+const holdToken = getHoldToken();
 // Client-side gate only — not real security, just separates the three
 // experiences (misafir/satış/yönetici). Anyone can read these in the source.
 const SALES_PASSWORD = 'satis123';
@@ -177,6 +192,19 @@ const buyerNameInput = document.getElementById('buyerNameInput');
 const buyerNoteText = document.getElementById('buyerNoteText');
 const buyerContinueBtn = document.getElementById('buyerContinueBtn');
 const paymentDisclaimerEl = document.getElementById('paymentDisclaimer');
+const holdCountdownEl = document.getElementById('holdCountdown');
+const discountCodeInput = document.getElementById('discountCodeInput');
+const applyDiscountBtn = document.getElementById('applyDiscountBtn');
+const discountNoteText = document.getElementById('discountNoteText');
+const priceSummaryText = document.getElementById('priceSummaryText');
+
+// İndirim kodu yönetimi (Yönetici)
+const discountListEl = document.getElementById('discountList');
+const newDiscountCode = document.getElementById('newDiscountCode');
+const newDiscountType = document.getElementById('newDiscountType');
+const newDiscountValue = document.getElementById('newDiscountValue');
+const newDiscountMaxUses = document.getElementById('newDiscountMaxUses');
+const addDiscountBtn = document.getElementById('addDiscountBtn');
 
 // Ticket view (QR + bilet kodu)
 const ticketViewOverlay = document.getElementById('ticketViewOverlay');
@@ -191,6 +219,14 @@ const openCheckinBtn = document.getElementById('openCheckinBtn');
 const checkinCodeInput = document.getElementById('checkinCodeInput');
 const checkinVerifyBtn = document.getElementById('checkinVerifyBtn');
 const checkinResultEl = document.getElementById('checkinResult');
+
+// Biletim Var (misafirin kendi biletini kod ile bulması)
+const openMyTicketBtn = document.getElementById('openMyTicketBtn');
+const myTicketOverlay = document.getElementById('myTicketOverlay');
+const myTicketClose = document.getElementById('myTicketClose');
+const myTicketCodeInput = document.getElementById('myTicketCodeInput');
+const myTicketFindBtn = document.getElementById('myTicketFindBtn');
+const myTicketResultEl = document.getElementById('myTicketResult');
 
 let cols = 10;
 let rows = 8;
@@ -207,6 +243,11 @@ let modalSeatIndices = null;  // bulk flow (array of indices)
 let modalGender = null;
 let modalTier = null;
 let modalBuyerName = '';
+let modalHeldIdx = null;       // reserve_seat başarılı olduysa tutulan koltuk index'i
+let holdCountdownInterval = null;
+let holdExpiresAt = null;
+let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
+let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.discount_codes)
 
 function canEdit(){
   return currentRole === 'admin' || currentRole === 'sales';
@@ -726,6 +767,87 @@ document.getElementById('addTierBtn').addEventListener('click', addTier);
   });
 });
 
+// ===== İndirim kodu yönetimi (etkinlik başına, sadece Yönetici) =====
+
+function pushDiscountCodes(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  supabaseClient.from('events').update({
+    discount_codes: DISCOUNT_CODES,
+    updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId).then(({ error }) => {
+    if(error) console.warn('Supabase (events) indirim kodu güncelleme hatası:', error.message);
+  });
+}
+
+function renderDiscountList(){
+  discountListEl.innerHTML = '';
+  DISCOUNT_CODES.forEach(dc => {
+    const row = document.createElement('div');
+    row.className = 'discount-row-item';
+
+    const label = document.createElement('span');
+    label.className = 'discount-code-label';
+    label.textContent = `${dc.code} — ${dc.type === 'percent' ? `%${dc.value}` : `${dc.value}₺`}`;
+
+    const usage = document.createElement('span');
+    usage.className = 'discount-usage-label';
+    usage.textContent = dc.maxUses ? `${dc.usedCount || 0}/${dc.maxUses} kullanıldı` : `${dc.usedCount || 0} kullanıldı`;
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'tier-del-btn';
+    delBtn.textContent = '×';
+    delBtn.setAttribute('aria-label', `${dc.code} kodunu sil`);
+    delBtn.addEventListener('click', () => removeDiscountCode(dc.code));
+
+    row.appendChild(label);
+    row.appendChild(usage);
+    row.appendChild(delBtn);
+    discountListEl.appendChild(row);
+  });
+}
+
+function addDiscountCode(){
+  const code = newDiscountCode.value.trim().toUpperCase();
+  if(!code){
+    toast('Kod için bir metin gir.');
+    return;
+  }
+  if(DISCOUNT_CODES.some(dc => dc.code === code)){
+    toast('Bu kod zaten var.');
+    return;
+  }
+  const type = newDiscountType.value === 'fixed' ? 'fixed' : 'percent';
+  const value = Math.max(0, Number(newDiscountValue.value) || 0);
+  const maxUses = newDiscountMaxUses.value ? Math.max(1, Math.round(Number(newDiscountMaxUses.value))) : null;
+
+  DISCOUNT_CODES.push({ code, type, value, maxUses, usedCount: 0 });
+  newDiscountCode.value = '';
+  newDiscountValue.value = '';
+  newDiscountMaxUses.value = '';
+
+  renderDiscountList();
+  pushDiscountCodes();
+  toast(`"${code}" indirim kodu eklendi.`);
+}
+
+function removeDiscountCode(code){
+  DISCOUNT_CODES = DISCOUNT_CODES.filter(dc => dc.code !== code);
+  renderDiscountList();
+  pushDiscountCodes();
+  toast(`"${code}" kodu silindi.`);
+}
+
+addDiscountBtn.addEventListener('click', addDiscountCode);
+[newDiscountCode, newDiscountValue, newDiscountMaxUses].forEach(input => {
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      addDiscountCode();
+    }
+  });
+});
+
 // ===== Seat modal: cinsiyet → bilet türü → alıcı bilgisi → ödeme yöntemi =====
 
 function showModalPanel(name){
@@ -759,12 +881,14 @@ function renderModalTierButtons(){
   });
 }
 
-function openSeatModal(idx){
+async function openSeatModal(idx){
   modalSeatIdx = idx;
   modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
   modalBuyerName = '';
+  modalDiscount = null;
+  modalHeldIdx = null;
 
   seatModalTitle.textContent = seatLabelFor(idx);
 
@@ -789,22 +913,80 @@ function openSeatModal(idx){
     }
     modalClearSeatBtn.hidden = !canEdit();
 
+    holdCountdownEl.hidden = true;
     showModalPanel('info');
-  } else {
-    renderModalTierButtons();
-    showModalPanel('gender');
+    seatModalOverlay.hidden = false;
+    return;
   }
 
+  // Boş koltuk: satın alma akışına girmeden önce birkaç dakikalık bir
+  // rezervasyon dene — başarısız olursa (başkası az önce aldı/bakıyor)
+  // modalı hiç açma.
+  if(currentEventId){
+    try {
+      const { error } = await supabaseClient.rpc('reserve_seat', {
+        p_event_id: currentEventId, p_idx: idx, p_token: holdToken, p_ttl_seconds: HOLD_TTL_SECONDS,
+      });
+      if(error) throw error;
+      modalHeldIdx = idx;
+      startHoldCountdown();
+    } catch(err){
+      const held = err && err.message && err.message.includes('SEAT_HELD');
+      toast(held ? 'Bu koltuğa şu anda başka biri bakıyor, birazdan tekrar dene.' : 'Bu koltuk artık uygun değil.');
+      return;
+    }
+  }
+
+  discountCodeInput.value = '';
+  discountNoteText.hidden = true;
+  renderModalTierButtons();
+  showModalPanel('gender');
   seatModalOverlay.hidden = false;
+}
+
+function startHoldCountdown(){
+  stopHoldCountdown();
+  holdExpiresAt = Date.now() + HOLD_TTL_SECONDS * 1000;
+  holdCountdownEl.hidden = false;
+  updateHoldCountdownText();
+  holdCountdownInterval = setInterval(updateHoldCountdownText, 1000);
+}
+
+function updateHoldCountdownText(){
+  const remainingMs = holdExpiresAt - Date.now();
+  if(remainingMs <= 0){
+    stopHoldCountdown();
+    toast('Koltuk rezervasyon süresi doldu, lütfen tekrar seç.');
+    closeSeatModal();
+    return;
+  }
+  const totalSec = Math.ceil(remainingMs / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  holdCountdownEl.textContent = `Bu koltuk sizin için ${m}:${String(s).padStart(2, '0')} ayrıldı`;
+}
+
+function stopHoldCountdown(){
+  clearInterval(holdCountdownInterval);
+  holdCountdownInterval = null;
+  holdExpiresAt = null;
+  holdCountdownEl.hidden = true;
 }
 
 function closeSeatModal(){
   seatModalOverlay.hidden = true;
+  stopHoldCountdown();
+  if(modalHeldIdx !== null && currentEventId){
+    supabaseClient.rpc('release_seat_hold', { p_event_id: currentEventId, p_idx: modalHeldIdx, p_token: holdToken })
+      .then(({ error }) => { if(error) console.warn('Rezervasyon serbest bırakılamadı.', error.message); });
+  }
   modalSeatIdx = null;
   modalSeatIndices = null;
   modalGender = null;
   modalTier = null;
   modalBuyerName = '';
+  modalDiscount = null;
+  modalHeldIdx = null;
 }
 
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
@@ -828,11 +1010,62 @@ buyerContinueBtn.addEventListener('click', () => {
   }
   modalBuyerName = name;
   paymentDisclaimerEl.hidden = currentRole !== 'guest';
+  discountCodeInput.value = '';
+  discountNoteText.hidden = true;
+  modalDiscount = null;
+  updatePriceSummary();
   showModalPanel('payment');
 });
 buyerNameInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); buyerContinueBtn.click(); }
 });
+
+// İndirim kodu: redeem_discount_code() atomik olarak kullanım sayacını
+// artırıyor (kod geçersiz/limiti dolmuşsa hata döner) — bu yüzden gerçek
+// satın alma tamamlanmasa bile hakkı harcanmış olabilir; hobi ölçekli bir
+// uygulama için kabul edilebilir bir sınırlama olarak not düşüldü.
+applyDiscountBtn.addEventListener('click', async () => {
+  const code = discountCodeInput.value.trim();
+  if(!code || !currentEventId) return;
+
+  applyDiscountBtn.disabled = true;
+  try {
+    const { data, error } = await supabaseClient.rpc('redeem_discount_code', { p_event_id: currentEventId, p_code: code });
+    if(error) throw error;
+
+    modalDiscount = { code: data.code, type: data.type, value: Number(data.value) };
+    discountNoteText.className = 'discount-note ok';
+    discountNoteText.textContent = `"${data.code}" kodu uygulandı.`;
+    discountNoteText.hidden = false;
+    updatePriceSummary();
+  } catch(err){
+    const msg = (err && err.message) || '';
+    discountNoteText.className = 'discount-note error';
+    discountNoteText.textContent = msg.includes('CODE_EXHAUSTED')
+      ? 'Bu kodun kullanım limiti doldu.'
+      : msg.includes('CODE_NOT_FOUND')
+        ? 'Kod bulunamadı.'
+        : 'Kod uygulanamadı.';
+    discountNoteText.hidden = false;
+  } finally {
+    applyDiscountBtn.disabled = false;
+  }
+});
+
+function computeDiscountedPrice(price, discount){
+  if(!discount) return price;
+  const raw = discount.type === 'percent' ? price - (price * discount.value / 100) : price - discount.value;
+  return Math.max(0, Math.round(raw));
+}
+
+function updatePriceSummary(){
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier){ priceSummaryText.textContent = ''; return; }
+  const finalPrice = computeDiscountedPrice(tier.price, modalDiscount);
+  priceSummaryText.textContent = modalDiscount
+    ? `${tier.label}: ${tier.price}₺ → ${finalPrice}₺ (kod: ${modalDiscount.code})`
+    : `${tier.label}: ${tier.price}₺`;
+}
 
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -842,8 +1075,11 @@ document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment
 });
 
 function buildSaleRecord(tier, payment){
+  const finalPrice = computeDiscountedPrice(tier.price, modalDiscount);
   return {
-    tier: tier.id, label: tier.label, price: tier.price, payment,
+    tier: tier.id, label: tier.label, price: finalPrice, payment,
+    originalPrice: modalDiscount ? tier.price : null,
+    discountCode: modalDiscount ? modalDiscount.code : null,
     buyerName: modalBuyerName || null,
     ticketCode: generateTicketCode(),
     checkedIn: false,
@@ -907,6 +1143,7 @@ async function finalizeGuestPurchase(payment){
       p_idx: idx,
       p_gender: modalGender,
       p_sale: sale,
+      p_token: holdToken,
     });
     if(error) throw error;
 
@@ -915,14 +1152,17 @@ async function finalizeGuestPurchase(payment){
     if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
     updateStats();
 
+    modalHeldIdx = null; // purchase_seat hold'u zaten sildi — closeSeatModal tekrar denemesin
     closeSeatModal();
     showTicketView(idx, sale);
   } catch(err){
     console.warn('Satın alma başarısız.', err);
-    const unavailable = err && err.message && err.message.includes('SEAT_UNAVAILABLE');
-    toast(unavailable
-      ? 'Üzgünüz, bu koltuk az önce başkası tarafından alındı.'
-      : 'Satın alma başarısız — buluta bağlanılamadı.');
+    const msg = (err && err.message) || '';
+    toast(msg.includes('SEAT_HELD')
+      ? 'Rezervasyon süresi doldu, koltuk artık uygun değil.'
+      : msg.includes('SEAT_UNAVAILABLE')
+        ? 'Üzgünüz, bu koltuk az önce başkası tarafından alındı.'
+        : 'Satın alma başarısız — buluta bağlanılamadı.');
     closeSeatModal();
   }
 }
@@ -945,10 +1185,25 @@ seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOve
 
 // ===== Ticket view (QR + bilet kodu) =====
 
-function showTicketView(idx, sale){
-  document.getElementById('ticketEventName').textContent = currentEventNameBadge.textContent || '';
-  document.getElementById('ticketSeatLabel').textContent = seatLabelFor(idx);
-  document.getElementById('ticketTierLabel').textContent = `${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
+// eventInfo verilirse (Biletlerim aramasından — farklı/aktif olmayan bir
+// etkinlik için) o bilgiler kullanılır; verilmezse şu an içinde bulunulan
+// etkinliğin global durumu (currentEventNameBadge, cols, venueType) kullanılır.
+function computeSeatLabelFor(idx, eventInfo){
+  if(!eventInfo) return seatLabelFor(idx);
+  if(eventInfo.venue_type === 'futbol') return `${STADIUM_BLOCKS[idx] ? STADIUM_BLOCKS[idx].label : idx} Bloğu`;
+  const c = eventInfo.cols || 1;
+  const r = Math.floor(idx / c) + 1;
+  const col = (idx % c) + 1;
+  return `Koltuk ${r}-${col}`;
+}
+
+function showTicketView(idx, sale, eventInfo){
+  document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
+  document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo);
+  const priceText = sale.originalPrice
+    ? `${sale.label} — ${sale.originalPrice}₺ → ${sale.price}₺ (kod: ${sale.discountCode}) — ${paymentLabel(sale.payment) || '-'}`
+    : `${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
+  document.getElementById('ticketTierLabel').textContent = priceText;
 
   const buyerEl = document.getElementById('ticketBuyerName');
   if(sale.buyerName){
@@ -1037,12 +1292,77 @@ checkinOverlay.addEventListener('click', (e) => { if(e.target === checkinOverlay
 checkinVerifyBtn.addEventListener('click', verifyTicket);
 checkinCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); verifyTicket(); } });
 
+// ===== Biletim Var — misafirin kendi biletini bilet koduyla bulması =====
+// Etkinlik listesindeki herkese açık ekrandan erişilir; kod bilinmeden bir
+// eşleşme bulunamaz (36^13'e yakın bir uzayda), bu yüzden başkasının
+// biletini "gözden geçirme" riski yok — bkz. README'deki bilet kodu notu.
+
+function openMyTicketModal(){
+  myTicketCodeInput.value = '';
+  myTicketResultEl.hidden = true;
+  myTicketOverlay.hidden = false;
+  myTicketCodeInput.focus();
+}
+function closeMyTicketModal(){
+  myTicketOverlay.hidden = true;
+}
+
+async function findMyTicket(){
+  const code = myTicketCodeInput.value.trim();
+  if(!code || !supabaseClient) return;
+
+  myTicketFindBtn.disabled = true;
+  myTicketResultEl.hidden = true;
+  try {
+    const [salesRes, eventsRes] = await Promise.all([
+      supabaseClient.from('event_sales').select('event_id, seat_sales'),
+      supabaseClient.from('events').select('id, name, venue_type, cols, rows'),
+    ]);
+    if(salesRes.error) throw salesRes.error;
+    if(eventsRes.error) throw eventsRes.error;
+
+    let found = null;
+    for(const row of salesRes.data || []){
+      const idx = (row.seat_sales || []).findIndex(s => s && s.ticketCode === code);
+      if(idx !== -1){
+        found = { eventId: row.event_id, idx, sale: row.seat_sales[idx] };
+        break;
+      }
+    }
+
+    if(!found){
+      myTicketResultEl.className = 'checkin-result error';
+      myTicketResultEl.textContent = 'Bilet bulunamadı.';
+      myTicketResultEl.hidden = false;
+      return;
+    }
+
+    const ev = (eventsRes.data || []).find(e => e.id === found.eventId) || { name: '', venue_type: 'sinema', cols: 1 };
+    closeMyTicketModal();
+    showTicketView(found.idx, found.sale, ev);
+  } catch(err){
+    console.warn('Bilet aranamadı.', err);
+    myTicketResultEl.className = 'checkin-result error';
+    myTicketResultEl.textContent = 'Arama başarısız — buluta bağlanılamadı.';
+    myTicketResultEl.hidden = false;
+  } finally {
+    myTicketFindBtn.disabled = false;
+  }
+}
+
+openMyTicketBtn.addEventListener('click', openMyTicketModal);
+myTicketClose.addEventListener('click', closeMyTicketModal);
+myTicketOverlay.addEventListener('click', (e) => { if(e.target === myTicketOverlay) closeMyTicketModal(); });
+myTicketFindBtn.addEventListener('click', findMyTicket);
+myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); findMyTicket(); } });
+
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!seatModalOverlay.hidden) closeSeatModal();
   if(!createEventOverlay.hidden) closeCreateEventModal();
   if(!ticketViewOverlay.hidden) closeTicketView();
   if(!checkinOverlay.hidden) closeCheckinModal();
+  if(!myTicketOverlay.hidden) closeMyTicketModal();
 });
 
 // ===== Filters & Search functionality =====
@@ -1187,6 +1507,7 @@ function applySeatsPayload(row){
   seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
   if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
   TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
+  DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   normalizeSalesLength();
 
   colsInput.value = cols;
@@ -1195,6 +1516,7 @@ function applySeatsPayload(row){
   renderVenueAccent();
   renderGrid();
   renderTierList();
+  renderDiscountList();
 
   isApplyingRemote = false;
 }
@@ -1468,6 +1790,7 @@ async function enterEvent(id, nameHint){
   seatSales = [];
   seatButtons = [];
   TICKET_TIERS = [...DEFAULT_TIERS];
+  DISCOUNT_CODES = [];
 
   eventListView.hidden = true;
   eventDetailView.hidden = false;

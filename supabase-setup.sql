@@ -75,18 +75,97 @@ begin
   end if;
 end $$;
 
--- Tek bir koltugu atomik olarak "satin al" -- misafirin kendi bileti kendi
--- almasi icin kullanilir. Iki farkli misafir ayni bos koltuga ayni anda
--- tiklarsa WHERE kosulundaki "hala empty mi" kontrolu sayesinde sadece biri
--- basarili olur, digeri SEAT_UNAVAILABLE hatasi alir. jsonb_set ile SADECE
--- ilgili index guncellenir -- misafirin tarayicisindaki eksik/eski kopya
--- diger koltuklarin/satislarin verisini asla ezmez.
-create or replace function purchase_seat(p_event_id uuid, p_idx int, p_gender text, p_sale jsonb)
+-- ============================================================
+-- KOLTUK REZERVASYONU (sepet zamanlayicisi)
+-- ============================================================
+-- Bir kullanici koltugu secip satin alma akisina girdiginde birkac dakika
+-- icin kilitlenir -- ayni koltuga baskasi tiklarsa "az once tutuldu"
+-- hatasi alir. Sure dolunca (expires_at gecince) veya kullanici vazgecip
+-- modali kapatinca serbest kalir.
+create table if not exists seat_holds (
+  event_id uuid not null references events(id) on delete cascade,
+  seat_idx int not null,
+  hold_token text not null,
+  expires_at timestamptz not null,
+  primary key (event_id, seat_idx)
+);
+alter table seat_holds disable row level security;
+grant select, insert, update, delete on seat_holds to anon, authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'seat_holds'
+  ) then
+    alter publication supabase_realtime add table seat_holds;
+  end if;
+end $$;
+
+create or replace function reserve_seat(p_event_id uuid, p_idx int, p_token text, p_ttl_seconds int default 300)
 returns void
 language plpgsql
 security definer
 as $$
 begin
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and expires_at < now();
+
+  if exists (
+    select 1 from seat_holds
+    where event_id = p_event_id and seat_idx = p_idx and hold_token <> p_token
+  ) then
+    raise exception 'SEAT_HELD';
+  end if;
+
+  if not exists (
+    select 1 from events where id = p_event_id and seat_states ->> p_idx = 'empty'
+  ) then
+    raise exception 'SEAT_UNAVAILABLE';
+  end if;
+
+  insert into seat_holds (event_id, seat_idx, hold_token, expires_at)
+  values (p_event_id, p_idx, p_token, now() + (p_ttl_seconds || ' seconds')::interval)
+  on conflict (event_id, seat_idx)
+  do update set hold_token = excluded.hold_token, expires_at = excluded.expires_at;
+end;
+$$;
+grant execute on function reserve_seat(uuid, int, text, int) to anon, authenticated;
+
+create or replace function release_seat_hold(p_event_id uuid, p_idx int, p_token text)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  delete from seat_holds
+  where event_id = p_event_id and seat_idx = p_idx and hold_token = p_token;
+end;
+$$;
+grant execute on function release_seat_hold(uuid, int, text) to anon, authenticated;
+
+-- Tek bir koltugu atomik olarak "satin al" -- misafirin kendi bileti kendi
+-- almasi icin kullanilir. Iki farkli misafir ayni bos koltuga ayni anda
+-- tiklarsa WHERE kosulundaki "hala empty mi" kontrolu sayesinde sadece biri
+-- basarili olur, digeri SEAT_UNAVAILABLE hatasi alir. jsonb_set ile SADECE
+-- ilgili index guncellenir -- misafirin tarayicisindaki eksik/eski kopya
+-- diger koltuklarin/satislarin verisini asla ezmez. p_token verilirse
+-- kendi hold'unu es gecer; baskasinin aktif (suresi dolmamis) hold'u varsa
+-- SEAT_HELD hatasi verir.
+create or replace function purchase_seat(p_event_id uuid, p_idx int, p_gender text, p_sale jsonb, p_token text default null)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and expires_at < now();
+
+  if exists (
+    select 1 from seat_holds
+    where event_id = p_event_id and seat_idx = p_idx and (p_token is null or hold_token <> p_token)
+  ) then
+    raise exception 'SEAT_HELD';
+  end if;
+
   update events
   set seat_states = jsonb_set(seat_states, array[p_idx::text], to_jsonb(p_gender)),
       updated_at = now()
@@ -97,6 +176,8 @@ begin
     raise exception 'SEAT_UNAVAILABLE';
   end if;
 
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx;
+
   update event_sales
   set seat_sales = jsonb_set(seat_sales, array[p_idx::text], p_sale),
       updated_at = now()
@@ -104,7 +185,64 @@ begin
 end;
 $$;
 
-grant execute on function purchase_seat(uuid, int, text, jsonb) to anon, authenticated;
+grant execute on function purchase_seat(uuid, int, text, jsonb, text) to anon, authenticated;
+
+-- ============================================================
+-- INDIRIM KODLARI (etkinlik basina)
+-- ============================================================
+alter table events add column if not exists discount_codes jsonb not null default '[]'::jsonb;
+
+-- Bir indirim kodunu atomik olarak "kullan": kod yoksa CODE_NOT_FOUND,
+-- kullanim limiti dolduysa CODE_EXHAUSTED hatasi verir; gecerliyse
+-- used_count'u +1 yapar ve guncel kod kaydini (tip/deger) dondurur --
+-- client bunu indirimli fiyati hesaplamak icin kullanir. "for update"
+-- satir kilidi, ayni kodun ayni anda iki kez kullanilmasini engeller.
+create or replace function redeem_discount_code(p_event_id uuid, p_code text)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_codes jsonb;
+  v_i int;
+  v_entry jsonb;
+  v_found_i int := null;
+begin
+  select discount_codes into v_codes from events where id = p_event_id for update;
+  if v_codes is null then
+    raise exception 'CODE_NOT_FOUND';
+  end if;
+
+  for v_i in 0 .. jsonb_array_length(v_codes) - 1 loop
+    v_entry := v_codes -> v_i;
+    if upper(v_entry ->> 'code') = upper(p_code) then
+      v_found_i := v_i;
+      exit;
+    end if;
+  end loop;
+
+  if v_found_i is null then
+    raise exception 'CODE_NOT_FOUND';
+  end if;
+
+  v_entry := v_codes -> v_found_i;
+
+  if (v_entry ->> 'maxUses') is not null
+     and (v_entry ->> 'usedCount')::int >= (v_entry ->> 'maxUses')::int then
+    raise exception 'CODE_EXHAUSTED';
+  end if;
+
+  v_entry := jsonb_set(v_entry, '{usedCount}', to_jsonb(coalesce((v_entry ->> 'usedCount')::int, 0) + 1));
+
+  update events
+  set discount_codes = jsonb_set(discount_codes, array[v_found_i::text], v_entry),
+      updated_at = now()
+  where id = p_event_id;
+
+  return v_entry;
+end;
+$$;
+grant execute on function redeem_discount_code(uuid, text) to anon, authenticated;
 
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra
