@@ -1167,7 +1167,7 @@ async function finalizeGuestPurchase(payment){
     const { error } = await supabaseClient.rpc('purchase_seat', {
       p_event_id: currentEventId,
       p_idx: idx,
-      p_gender: modalGender,
+      p_gender: SEAT_STATE_SHORT[modalGender] || modalGender,
       p_sale: sale,
       p_token: holdToken,
     });
@@ -1517,12 +1517,31 @@ function applyFilterAndSearch(){
 // payment details never reach a guest's browser at all (not just hidden in
 // the UI — never sent over the wire). Satış/Yönetici sync both tables.
 
+// Supabase'e giderken koltuk durumlarını tek harfe indiriyoruz:
+// ["empty","empty",...] yerine ["e","e",...]. Realtime bir satır her
+// değiştiğinde satırın TAMAMINI yayınladığı için seat_states en büyük
+// kalem oluyordu; bu kodlama onu ~%55 küçültüyor.
+// Okurken iki formatı da kabul ediyoruz — böylece eski kayıtlar ve
+// JS/SQL'in farklı zamanlarda güncellenmesi sorun çıkarmıyor.
+const SEAT_STATE_SHORT = { empty: 'e', male: 'm', female: 'f' };
+const SEAT_STATE_LONG = { e: 'empty', m: 'male', f: 'female' };
+
+function encodeSeatStates(states){
+  return states.map(s => SEAT_STATE_SHORT[s] || s);
+}
+function decodeSeatStates(states){
+  return states.map(s => SEAT_STATE_LONG[s] || s);
+}
+function isSeatTaken(state){
+  return !!state && state !== 'empty' && state !== 'e';
+}
+
 function pushSeatStates(){
   if(!supabaseClient || isApplyingRemote || !currentEventId) return;
   clearTimeout(pushTimerSeatStates);
   pushTimerSeatStates = setTimeout(async () => {
     const { error } = await supabaseClient.from('events').update({
-      seat_states: seatStates,
+      seat_states: encodeSeatStates(seatStates),
       updated_at: new Date().toISOString(),
     }).eq('id', currentEventId);
     if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
@@ -1535,7 +1554,7 @@ function pushLayout(){
   pushTimerLayout = setTimeout(async () => {
     const { error } = await supabaseClient.from('events').update({
       cols, rows,
-      seat_states: seatStates,
+      seat_states: encodeSeatStates(seatStates),
       venue_type: venueType,
       updated_at: new Date().toISOString(),
     }).eq('id', currentEventId);
@@ -1587,7 +1606,7 @@ function applySeatsPayload(row){
 
   cols = row.cols;
   rows = row.rows;
-  seatStates = Array.isArray(row.seat_states) ? row.seat_states : [];
+  seatStates = Array.isArray(row.seat_states) ? decodeSeatStates(row.seat_states) : [];
   if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
   TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
@@ -1665,7 +1684,7 @@ async function ensureEventSalesSync(eventId){
 function computeOccupancy(ev){
   const states = Array.isArray(ev.seat_states) ? ev.seat_states : [];
   const total = states.length;
-  const filled = states.filter(s => s && s !== 'empty').length;
+  const filled = states.filter(isSeatTaken).length;
   const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
   return { total, filled, pct };
 }
@@ -1774,11 +1793,31 @@ async function loadEvents(){
   }
 }
 
+// Gelen payload zaten değişen satırın tamamını taşıyor. Eskiden burada
+// loadEvents() çağrılıp TÜM etkinlikler (hepsinin seat_states'i dahil)
+// baştan indiriliyordu — hem de her koltuk tıklamasında, her bağlı cihazda.
+// Artık yerel diziyi doğrudan payload'dan yamalıyoruz, ek istek yok.
 function subscribeEventsRealtime(){
   eventsChannel = supabaseClient
     .channel('events_list_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => loadEvents())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, (payload) => {
+      if(payload.eventType === 'DELETE'){
+        // REPLICA IDENTITY DEFAULT'ta payload.old sadece birincil anahtarı
+        // taşır — bize zaten yeten tek şey o.
+        events = events.filter(e => e.id !== payload.old.id);
+      } else {
+        const row = payload.new;
+        const i = events.findIndex(e => e.id === row.id);
+        if(i === -1) events.unshift(row);
+        else events[i] = row;
+      }
+      renderEventList();
+    })
     .subscribe();
+}
+
+function unsubscribeEventsListRealtime(){
+  if(eventsChannel){ supabaseClient.removeChannel(eventsChannel); eventsChannel = null; }
 }
 
 async function ensureEventsSync(){
@@ -1851,7 +1890,7 @@ async function createEvent(){
   try {
     const { data, error } = await supabaseClient.from('events').insert({
       name, event_date: date, venue_type: vType,
-      cols: evCols, rows: evRows, seat_states: states, tiers: DEFAULT_TIERS, status: 'active',
+      cols: evCols, rows: evRows, seat_states: encodeSeatStates(states), tiers: DEFAULT_TIERS, status: 'active',
     }).select().single();
     if(error) throw error;
 
@@ -1883,6 +1922,10 @@ submitCreateEventBtn.addEventListener('click', createEvent);
 async function enterEvent(id, nameHint){
   clearPushTimers();
   unsubscribeEventChannels();
+  // Etkinlik listesi ekranda değilken canlı tutmanın anlamı yok — üstelik
+  // events_list_changes ile event_seats_<id> ikisi de `events` tablosunu
+  // dinlediği için her koltuk değişikliği aynı satırı iki kez gönderiyordu.
+  unsubscribeEventsListRealtime();
   setBulkMode(false);
   bulkSelected.clear();
 
@@ -1924,6 +1967,13 @@ function exitEvent(){
   currentEventNameBadge.hidden = true;
   eventDetailView.hidden = true;
   eventListView.hidden = false;
+
+  // Listeye dönerken bir kez tazele ve canlı aboneliği geri aç (etkinlik
+  // içindeyken kapatmıştık).
+  if(supabaseClient && !eventsChannel){
+    loadEvents();
+    subscribeEventsRealtime();
+  }
 }
 
 backToEventsBtn.addEventListener('click', exitEvent);
@@ -2001,7 +2051,7 @@ logoutBtn.addEventListener('click', () => {
 
   clearPushTimers();
   unsubscribeEventChannels();
-  if(eventsChannel){ supabaseClient.removeChannel(eventsChannel); eventsChannel = null; }
+  unsubscribeEventsListRealtime();
   eventsSynced = false;
   events = [];
   currentEventId = null;

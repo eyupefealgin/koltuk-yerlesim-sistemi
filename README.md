@@ -31,6 +31,7 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 - Her etkinlik için sütun/satır sayısı girilir, hazır düzen şablonları (6×5, 10×8, 12×10, 16×12) — sadece Yönetici
 - **Bilet türlerini yönetme**: her etkinliğin kendi bilet türleri/fiyatları var; ekle, sil, fiyatını değiştir — sadece Yönetici; daha önce satılmış koltuklar satıldığı andaki isim/fiyatı korur
 - Canlı istatistik + **Ciro Özeti** (bilet türüne göre + ödeme yöntemine göre — Kart/Nakit) — Satış ve Yönetici görür, Misafir görmez
+- **Düşük veri trafiği**: bir koltuk değiştiğinde (a) etkinlik listesi kanalı, etkinlik içindeyken kapatılır — daha önce aynı satır iki ayrı kanaldan birden geliyordu; (b) liste kanalı artık tüm etkinlikleri yeniden indirmek yerine gelen payload'ı yerel diziye yamalar; (c) koltuk durumları `"empty"/"male"/"female"` yerine `"e"/"m"/"f"` saklanır (44 koltukta 353 → 177 bayt). Sonuç: koltuk başına ~2.8 kB WebSocket + 1.2 kB tam yeniden indirme yerine tek bir ~1.2 kB'lık frame
 - **Çoklu cihaz senkronizasyonu + veri azaltma**: `events` tablosu (etkinlik adı/tarih/tür/doluluk + bilet türü **fiyat listesi**) herkese açık — misafirin kendi bileti alabilmesi için fiyatları görmesi gerekiyor. `event_sales` (kimin ne aldığı: alıcı adı, ödeme yöntemi, bilet kodu) sadece Satış/Yönetici tarafından toplu okunur; misafir sadece **kendi** satın alma işlemini `purchase_seat` fonksiyonuyla yazar, başka kimsenin satış kaydını asla okumaz
 
 ## Teknolojiler

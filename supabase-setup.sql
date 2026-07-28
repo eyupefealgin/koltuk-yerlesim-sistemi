@@ -117,8 +117,10 @@ begin
     raise exception 'SEAT_HELD';
   end if;
 
+  -- 'e' yeni kisa kodlama, 'empty' eski uzun format -- ikisini de kabul
+  -- ediyoruz ki JS ve SQL farkli zamanlarda guncellense de bozulmasin.
   if not exists (
-    select 1 from events where id = p_event_id and seat_states ->> p_idx = 'empty'
+    select 1 from events where id = p_event_id and seat_states ->> p_idx in ('e', 'empty')
   ) then
     raise exception 'SEAT_UNAVAILABLE';
   end if;
@@ -170,7 +172,9 @@ begin
   set seat_states = jsonb_set(seat_states, array[p_idx::text], to_jsonb(p_gender)),
       updated_at = now()
   where id = p_event_id
-    and seat_states ->> p_idx = 'empty'; -- ->> int = array index; ->> text (::text cast) NULL doner ve hep SEAT_UNAVAILABLE firlatirdi
+    -- ->> int = dizi indeksi; ->> text (::text cast) NULL doner ve hep
+    -- SEAT_UNAVAILABLE firlatirdi. 'e' yeni kisa kodlama, 'empty' eski format.
+    and seat_states ->> p_idx in ('e', 'empty');
 
   if not found then
     raise exception 'SEAT_UNAVAILABLE';
@@ -243,6 +247,38 @@ begin
 end;
 $$;
 grant execute on function redeem_discount_code(uuid, text) to anon, authenticated;
+
+-- ============================================================
+-- KOLTUK DURUMU KISA KODLAMASI (veri trafigini kucultmek icin)
+-- ============================================================
+-- Realtime, bir satir her degistiginde satirin TAMAMINI yayinliyor; en buyuk
+-- alan seat_states oldugu icin degerleri tek harfe indirdik:
+--   "empty" -> "e",  "male" -> "m",  "female" -> "f"
+-- Asagidaki migrasyon mevcut kayitlari yeni formata cevirir. Fonksiyonlar
+-- iki formati da kabul ettigi icin bu adim atlanirsa da sistem calisir,
+-- sadece o eski satirlar buyuk kalmaya devam eder.
+-- "with ordinality ... order by ord": koltuk sirasi kesinlikle korunmali,
+-- yoksa tum koltuklar birbirine karisir.
+update events e
+set seat_states = sub.new_states
+from (
+  select ev.id,
+         jsonb_agg(
+           case elem #>> '{}'
+             when 'empty' then '"e"'::jsonb
+             when 'male' then '"m"'::jsonb
+             when 'female' then '"f"'::jsonb
+             else elem
+           end
+           order by ord
+         ) as new_states
+  from events ev,
+       lateral jsonb_array_elements(ev.seat_states) with ordinality as a(elem, ord)
+  where jsonb_typeof(ev.seat_states) = 'array'
+    and ev.seat_states::text ~ '"(empty|male|female)"'
+  group by ev.id
+) sub
+where e.id = sub.id;
 
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra
