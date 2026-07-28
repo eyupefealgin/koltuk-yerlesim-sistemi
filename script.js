@@ -139,6 +139,13 @@ const eventListView = document.getElementById('eventListView');
 const eventDetailView = document.getElementById('eventDetailView');
 const eventGridEl = document.getElementById('eventGrid');
 const eventEmptyHint = document.getElementById('eventEmptyHint');
+const eventFilterEmptyHint = document.getElementById('eventFilterEmptyHint');
+const eventFilterVenue = document.getElementById('eventFilterVenue');
+const eventFilterDateFrom = document.getElementById('eventFilterDateFrom');
+const eventFilterDateTo = document.getElementById('eventFilterDateTo');
+const eventFilterPriceMin = document.getElementById('eventFilterPriceMin');
+const eventFilterPriceMax = document.getElementById('eventFilterPriceMax');
+const eventFilterClearBtn = document.getElementById('eventFilterClearBtn');
 const createEventBtn = document.getElementById('createEventBtn');
 const createEventOverlay = document.getElementById('createEventOverlay');
 const createEventClose = document.getElementById('createEventClose');
@@ -192,6 +199,9 @@ const buyerNameInput = document.getElementById('buyerNameInput');
 const buyerNoteText = document.getElementById('buyerNoteText');
 const buyerContinueBtn = document.getElementById('buyerContinueBtn');
 const paymentDisclaimerEl = document.getElementById('paymentDisclaimer');
+const legalConsentRow = document.getElementById('legalConsentRow');
+const legalConsentCheckbox = document.getElementById('legalConsentCheckbox');
+const paymentChoiceButtons = document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]');
 const holdCountdownEl = document.getElementById('holdCountdown');
 const discountCodeInput = document.getElementById('discountCodeInput');
 const applyDiscountBtn = document.getElementById('applyDiscountBtn');
@@ -1002,6 +1012,12 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
   });
 });
 
+function updatePaymentButtonsEnabled(){
+  const needsConsent = !legalConsentRow.hidden;
+  const enabled = !needsConsent || legalConsentCheckbox.checked;
+  paymentChoiceButtons.forEach(btn => { btn.disabled = !enabled; });
+}
+
 buyerContinueBtn.addEventListener('click', () => {
   const name = buyerNameInput.value.trim();
   if(currentRole === 'guest' && !name){
@@ -1009,13 +1025,18 @@ buyerContinueBtn.addEventListener('click', () => {
     return;
   }
   modalBuyerName = name;
-  paymentDisclaimerEl.hidden = currentRole !== 'guest';
+  const isGuest = currentRole === 'guest';
+  paymentDisclaimerEl.hidden = !isGuest;
+  legalConsentRow.hidden = !isGuest;
+  legalConsentCheckbox.checked = false;
   discountCodeInput.value = '';
   discountNoteText.hidden = true;
   modalDiscount = null;
   updatePriceSummary();
+  updatePaymentButtonsEnabled();
   showModalPanel('payment');
 });
+legalConsentCheckbox.addEventListener('change', updatePaymentButtonsEnabled);
 buyerNameInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); buyerContinueBtn.click(); }
 });
@@ -1132,6 +1153,11 @@ async function finalizeGuestPurchase(payment){
   const idx = modalSeatIdx;
   if(idx === null || !currentEventId) return;
 
+  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
+    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
+    return;
+  }
+
   const tier = TICKET_TIERS.find(t => t.id === modalTier);
   if(!tier) return;
 
@@ -1153,6 +1179,7 @@ async function finalizeGuestPurchase(payment){
     updateStats();
 
     modalHeldIdx = null; // purchase_seat hold'u zaten sildi — closeSeatModal tekrar denemesin
+    saveMyTicketLocally(currentEventNameBadge.textContent || '', seatLabelFor(idx), sale.ticketCode);
     closeSeatModal();
     showTicketView(idx, sale);
   } catch(err){
@@ -1297,9 +1324,52 @@ checkinCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.p
 // eşleşme bulunamaz (36^13'e yakın bir uzayda), bu yüzden başkasının
 // biletini "gözden geçirme" riski yok — bkz. README'deki bilet kodu notu.
 
+const MY_TICKETS_KEY = 'koltukYerlesim.myTickets';
+
+function saveMyTicketLocally(eventName, seatLabel, ticketCode){
+  try {
+    const list = JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || '[]');
+    list.unshift({ eventName, seatLabel, ticketCode });
+    localStorage.setItem(MY_TICKETS_KEY, JSON.stringify(list.slice(0, 20)));
+  } catch { /* localStorage kapalı/dolu olabilir — sessizce atla */ }
+}
+
+function renderMyTicketHistory(){
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || '[]'); } catch { /* yoksay */ }
+
+  const historyEl = document.getElementById('myTicketHistory');
+  const listEl = document.getElementById('myTicketHistoryList');
+  if(!list.length){ historyEl.hidden = true; return; }
+
+  historyEl.hidden = false;
+  listEl.innerHTML = '';
+  list.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'my-ticket-history-item';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'hist-event';
+    nameEl.textContent = item.eventName;
+
+    const seatEl = document.createElement('span');
+    seatEl.className = 'hist-seat';
+    seatEl.textContent = item.seatLabel;
+
+    row.appendChild(nameEl);
+    row.appendChild(seatEl);
+    row.addEventListener('click', () => {
+      myTicketCodeInput.value = item.ticketCode;
+      findMyTicket();
+    });
+    listEl.appendChild(row);
+  });
+}
+
 function openMyTicketModal(){
   myTicketCodeInput.value = '';
   myTicketResultEl.hidden = true;
+  renderMyTicketHistory();
   myTicketOverlay.hidden = false;
   myTicketCodeInput.focus();
 }
@@ -1351,6 +1421,19 @@ async function findMyTicket(){
 }
 
 openMyTicketBtn.addEventListener('click', openMyTicketModal);
+
+[eventFilterVenue, eventFilterDateFrom, eventFilterDateTo, eventFilterPriceMin, eventFilterPriceMax].forEach(el => {
+  el.addEventListener('input', renderEventList);
+  el.addEventListener('change', renderEventList);
+});
+eventFilterClearBtn.addEventListener('click', () => {
+  eventFilterVenue.value = '';
+  eventFilterDateFrom.value = '';
+  eventFilterDateTo.value = '';
+  eventFilterPriceMin.value = '';
+  eventFilterPriceMax.value = '';
+  renderEventList();
+});
 myTicketClose.addEventListener('click', closeMyTicketModal);
 myTicketOverlay.addEventListener('click', (e) => { if(e.target === myTicketOverlay) closeMyTicketModal(); });
 myTicketFindBtn.addEventListener('click', findMyTicket);
@@ -1596,6 +1679,35 @@ function formatEventDate(dateStr){
   }
 }
 
+function computeMinTierPrice(ev){
+  const tiers = Array.isArray(ev.tiers) ? ev.tiers : [];
+  if(!tiers.length) return null;
+  return Math.min(...tiers.map(t => t.price));
+}
+
+// Etkinlik listesindeki filtre çubuğu — tamamen istemci tarafında, zaten
+// belleğe çekilmiş `events` dizisini süzer (yeni bir sorgu atmaz).
+function eventMatchesFilters(ev){
+  const venueVal = eventFilterVenue.value;
+  if(venueVal && ev.venue_type !== venueVal) return false;
+
+  const dateFrom = eventFilterDateFrom.value;
+  const dateTo = eventFilterDateTo.value;
+  if(dateFrom && (!ev.event_date || ev.event_date < dateFrom)) return false;
+  if(dateTo && (!ev.event_date || ev.event_date > dateTo)) return false;
+
+  const priceMinRaw = eventFilterPriceMin.value;
+  const priceMaxRaw = eventFilterPriceMax.value;
+  if(priceMinRaw !== '' || priceMaxRaw !== ''){
+    const minPrice = computeMinTierPrice(ev);
+    if(minPrice === null) return false;
+    if(priceMinRaw !== '' && minPrice < Number(priceMinRaw)) return false;
+    if(priceMaxRaw !== '' && minPrice > Number(priceMaxRaw)) return false;
+  }
+
+  return true;
+}
+
 function renderEventList(){
   eventGridEl.innerHTML = '';
   eventEmptyHint.hidden = events.length > 0;
@@ -1605,7 +1717,10 @@ function renderEventList(){
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  sorted.forEach(ev => {
+  const filtered = sorted.filter(eventMatchesFilters);
+  eventFilterEmptyHint.hidden = !(events.length > 0 && filtered.length === 0);
+
+  filtered.forEach(ev => {
     const { total, pct } = computeOccupancy(ev);
     const venueLabel = (VENUE_TYPES[ev.venue_type] || VENUE_TYPES.sinema).label;
     const statusLabel = ev.status === 'archived' ? 'Arşivlendi' : 'Aktif';
@@ -1839,7 +1954,9 @@ function enterApp(role){
   }
 }
 
-guestLoginBtn.addEventListener('click', () => enterApp('guest'));
+// guestLoginBtn admin.html'de yok (personel-only sayfa), salesLoginBtn/
+// adminLoginBtn index.html'de yok (misafir-only sayfa) — bkz. admin.html.
+guestLoginBtn?.addEventListener('click', () => enterApp('guest'));
 
 function showPasswordRow(role){
   pendingLoginRole = role;
@@ -1848,8 +1965,8 @@ function showPasswordRow(role){
   passwordInput.value = '';
   passwordInput.focus();
 }
-salesLoginBtn.addEventListener('click', () => showPasswordRow('sales'));
-adminLoginBtn.addEventListener('click', () => showPasswordRow('admin'));
+salesLoginBtn?.addEventListener('click', () => showPasswordRow('sales'));
+adminLoginBtn?.addEventListener('click', () => showPasswordRow('admin'));
 
 function tryPasswordLogin(){
   const expected = pendingLoginRole === 'admin' ? ADMIN_PASSWORD : SALES_PASSWORD;
@@ -1918,6 +2035,17 @@ logoutBtn.addEventListener('click', () => {
     });
   }
 
+  // index.html (data-page="public") = müşteri sitesi: personel girişi hiç
+  // gösterilmez, her ziyaret otomatik misafir olarak başlar — diğer e-bilet
+  // sitelerinde olduğu gibi. admin.html (data-page="admin") = personel
+  // paneli: sadece kayıtlı bir Satış/Yönetici oturumu varsa otomatik girer,
+  // yoksa (misafir oturumu dahil) şifre ekranında kalır.
+  const isAdminPage = document.body.dataset.page === 'admin';
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
-  if(existingRole === 'admin' || existingRole === 'sales' || existingRole === 'guest') enterApp(existingRole);
+
+  if(isAdminPage){
+    if(existingRole === 'admin' || existingRole === 'sales') enterApp(existingRole);
+  } else {
+    enterApp('guest');
+  }
 })();

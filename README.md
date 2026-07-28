@@ -4,15 +4,23 @@ https://eyupefealgin.github.io/koltuk-yerlesim-sistemi/
 
 Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk yerleşim ve bilet satış sistemi. Misafir kendi biletini kendi alabiliyor, Satış/Yönetici de gişeden satış yapabiliyor — her satışta **QR kodlu bir bilet** üretiliyor ve kapıda **check-in** ile doğrulanabiliyor. Supabase üzerinden **çoklu cihaz senkronizasyonu** ile çalışıyor — bir cihazda yapılan değişiklik anında diğerlerinde de görünüyor.
 
+## Sayfalar (diğer e-bilet siteleri gibi ayrı URL'ler)
+
+- **`index.html`** — herkese açık müşteri sitesi. Giriş ekranı/rol seçimi yok, her ziyaret otomatik misafir olarak açılır; personel girişine buradan erişilmez.
+- **`admin.html`** — personel paneli. Sadece Satış/Yönetici şifre girişi var (misafir seçeneği yok), arama motorlarında indekslenmemesi için `noindex` etiketi eklendi. Etkinlik yönetimi, satış, check-in hepsi burada.
+- **`legal.html`** — Mesafeli Satış Sözleşmesi / KVKK şablon sayfası (satın alma akışından linklenir).
+
 ## Özellikler
 
-- **Çoklu etkinlik**: giriş yaptıktan sonra bir **Etkinlikler** listesi karşılıyor — her etkinliğin kendi adı, tarihi, türü, koltuk düzeni, bilet türleri/fiyatları ve satışları var. Yönetici "+ Yeni Etkinlik" ile oluşturur/arşivler/siler, herkes listeden birine girip görüntüleyebilir/satın alabilir. Kartlarda canlı doluluk yüzdesi görünür
+- **Çoklu etkinlik**: bir **Etkinlikler** listesi karşılıyor — her etkinliğin kendi adı, tarihi, türü, koltuk düzeni, bilet türleri/fiyatları ve satışları var. Yönetici "+ Yeni Etkinlik" ile oluşturur/arşivler/siler, herkes listeden birine girip görüntüleyebilir/satın alabilir. Kartlarda canlı doluluk yüzdesi görünür
+- **Etkinlik listesi filtreleme**: tür, tarih aralığı, fiyat aralığına (en ucuz bilet türüne göre) göre anlık filtreleme — tamamen istemci tarafında, ek sorgu atmaz
 - **3 rol**: **Misafir** (şifresiz, kendi biletini kendi satın alabilir) · **Satış** (kendi şifresi, gişeden koltuk satar) · **Yönetici** (kendi şifresi, her şeye erişir: etkinlik/düzen/bilet türü yönetimi, sıfırlama)
 - **Misafirin kendi bileti kendi alması**: boş bir koltuğa tıklayıp cinsiyet → bilet türü → ad soyad → ödeme yöntemi seçerek kendi biletini satın alabilir. İki farklı misafir aynı koltuğa aynı anda tıklarsa, atomik bir veritabanı fonksiyonu (`purchase_seat`) sayesinde sadece biri başarılı olur, diğerine "bu koltuk az önce alındı" uyarısı gösterilir
 - **Rezervasyon sayacı (sepet zamanlayıcısı)**: bir koltuğa tıklanınca 5 dakikalığına o kullanıcı için kilitlenir (`reserve_seat`), modalda canlı geri sayım gösterilir; süre dolar ya da vazgeçilirse (modal kapatılırsa) otomatik serbest kalır, başka biri o koltuğa aynı anda bakıyorsa "az önce tutuldu" uyarısı verilir
 - **QR kodlu bilet**: her satışta (gişeden veya misafirden) benzersiz bir bilet kodu + QR kod üretilir; satış sonrası otomatik gösterilir, yazdırılabilir. Personel, dolu bir koltuğun bilgisinden "Bileti Görüntüle" ile bileti tekrar açabilir
-- **Biletim Var**: etkinlik listesi ekranından, misafir bilet kodunu girerek daha önce aldığı bileti (QR dahil) tekrar bulup görüntüleyebilir/yazdırabilir
+- **Biletim Var**: etkinlik listesi ekranından, misafir bilet kodunu girerek daha önce aldığı bileti (QR dahil) tekrar bulup görüntüleyebilir/yazdırabilir. Ayrıca bu cihazda daha önce alınan biletler `localStorage`'da tutulur ve listede tek tıkla tekrar açılabilir
 - **İndirim kodu**: Yönetici etkinlik başına yüzde veya sabit tutarlı, opsiyonel kullanım limitli kodlar tanımlayabilir; satın alma sırasında kod girilip fiyat anında güncellenir, kullanım sayısı atomik olarak artar (aynı kod aynı anda iki kez kullanılamaz)
+- **Yasal onay**: misafir kendi bileti kendi alırken, ödeme adımından önce Mesafeli Satış Sözleşmesi/KVKK metnini (`legal.html`, şablon) okuyup onaylaması zorunludur — onaylanmadan ödeme butonları pasif kalır
 - **Bilet Doğrula (check-in)**: Satış/Yönetici, bilet kodunu girerek girişte bileti "kullanıldı" olarak işaretleyebilir; aynı bilet ikinci kez okutulursa uyarı verir, geçersiz kod için "bulunamadı" der — sadece geçerli etkinliğin belleğe alınmış satışları içinde arar
 - **Etkinlik türü**: her etkinlik için Sinema / Tiyatro / Konser / Futbol Sahası / Genel Etkinlik seçilir — üstteki "PERDE/SAHNE/ALAN" alanı türe göre şekil ve etiket değiştirir
 - **Futbol Sahası düzeni**: sayısal koltuk yerine sabit bir stadyum şeması — ortada saha, etrafında Doğu/Batı/Kuzey/Güney tribün blokları (iç+dış katman) + VIP/Misafir/Basın/Protokol köşe blokları (44 blok). Sütun/satır ayarı bu türde geçerli değil; diğer türler normal koltuk ızgarasını kullanır
@@ -35,13 +43,13 @@ HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode
 4. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
 
 ## Çalıştırma
-`index.html` dosyasını bir tarayıcıda aç, ya da:
+`index.html` (müşteri) veya `admin.html` (personel) dosyasını bir tarayıcıda aç, ya da:
 
 ```
 python -m http.server 5175
 ```
 
-sonra `http://localhost:5175` adresine git.
+sonra `http://localhost:5175` (müşteri) veya `http://localhost:5175/admin.html` (personel) adresine git.
 
 ## Notlar
 - **Gerçek ödeme altyapısı yok** — "Kart/Nakit" seçimi sadece kayıt amaçlı bir etikettir, gerçek bir ödeme sağlayıcısı (iyzico, Stripe vb.) üzerinden para tahsil edilmez. Satın alma ekranında misafire bu açıkça belirtilir.
@@ -52,3 +60,5 @@ sonra `http://localhost:5175` adresine git.
 - Bilet kodları (`TKT-...`) kriptografik değil, gerçek kullanıcı doğrulaması (Supabase Auth) yok — sistem, kağıt bir bilet kadar güvenli: kodu bilen/QR'ı okutan biri check-in yapabilir.
 - Rezervasyon kilidi ve atomik satın alma sadece **tekli** satın alma akışında (misafir + personelin tek koltuk satışı) çalışır; personelin "Çoklu Seçim" ile toplu satışı bu kilide tabi değildir (düşük risk, tek operatörlük personel senaryosu).
 - İndirim kodu `redeem_discount_code` ile atomik olarak "kullanılır" (kullanım sayacı hemen artar) — kod uygulanıp satın alma tamamlanmazsa (kullanıcı vazgeçerse) o hak boşa gitmiş olur; hobi ölçekli bir uygulama için kabul edilebilir bir sınırlama.
+- `legal.html` gerçek bir hukuki belge değil, **şablondur** — gerçek kullanım için satıcı/işletme bilgileriyle doldurulup bir hukuk danışmanına gösterilmelidir.
+- `admin.html`'deki `noindex` etiketi sadece iyi niyetli arama motoru botlarına bir "istekte bulunma" niteliğindedir, gerçek bir erişim kısıtlaması değildir — URL'yi bilen herkes sayfayı açabilir (şifre ekranı asıl koruma).
