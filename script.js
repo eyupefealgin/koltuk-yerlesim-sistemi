@@ -2037,14 +2037,20 @@ logoutBtn.addEventListener('click', () => {
 
   // index.html (data-page="public") = müşteri sitesi: personel girişi hiç
   // gösterilmez, her ziyaret otomatik misafir olarak başlar — diğer e-bilet
-  // sitelerinde olduğu gibi. admin.html (data-page="admin") = personel
-  // paneli: sadece kayıtlı bir Satış/Yönetici oturumu varsa otomatik girer,
-  // yoksa (misafir oturumu dahil) şifre ekranında kalır.
-  const isAdminPage = document.body.dataset.page === 'admin';
+  // sitelerinde olduğu gibi. satis.html (data-page="sales") ve
+  // yonetici.html (data-page="admin") kendi rolüne ait bir oturum varsa
+  // otomatik girer, yoksa doğrudan o role ait şifre alanına odaklanır
+  // (rol seçim ekranı yok — hangi role ait olduğu URL'den zaten belli).
+  const page = document.body.dataset.page;
   const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
 
-  if(isAdminPage){
-    if(existingRole === 'admin' || existingRole === 'sales') enterApp(existingRole);
+  if(page === 'sales' || page === 'admin'){
+    if(existingRole === page){
+      enterApp(existingRole);
+    } else {
+      pendingLoginRole = page;
+      passwordInput.focus();
+    }
   } else {
     enterApp('guest');
   }

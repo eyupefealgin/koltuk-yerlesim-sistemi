@@ -7,7 +7,8 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 ## Sayfalar (diğer e-bilet siteleri gibi ayrı URL'ler)
 
 - **`index.html`** — herkese açık müşteri sitesi. Giriş ekranı/rol seçimi yok, her ziyaret otomatik misafir olarak açılır; personel girişine buradan erişilmez.
-- **`admin.html`** — personel paneli. Sadece Satış/Yönetici şifre girişi var (misafir seçeneği yok), arama motorlarında indekslenmemesi için `noindex` etiketi eklendi. Etkinlik yönetimi, satış, check-in hepsi burada.
+- **`satis.html`** — satış girişi. Rol seçimi yok, sadece Satış şifresi sorulur (URL'nin kendisi rolü belirliyor).
+- **`yonetici.html`** — yönetici girişi. Aynı şekilde sadece Yönetici şifresi sorulur. Her iki personel sayfası da arama motorlarında indekslenmemesi için `noindex` etiketi taşır.
 - **`legal.html`** — Mesafeli Satış Sözleşmesi / KVKK şablon sayfası (satın alma akışından linklenir).
 
 ## Özellikler
@@ -43,13 +44,13 @@ HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode
 4. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
 
 ## Çalıştırma
-`index.html` (müşteri) veya `admin.html` (personel) dosyasını bir tarayıcıda aç, ya da:
+`index.html` (müşteri), `satis.html` veya `yonetici.html` (personel) dosyasını bir tarayıcıda aç, ya da:
 
 ```
 python -m http.server 5175
 ```
 
-sonra `http://localhost:5175` (müşteri) veya `http://localhost:5175/admin.html` (personel) adresine git.
+sonra `http://localhost:5175`, `http://localhost:5175/satis.html` veya `http://localhost:5175/yonetici.html` adresine git.
 
 ## Notlar
 - **Gerçek ödeme altyapısı yok** — "Kart/Nakit" seçimi sadece kayıt amaçlı bir etikettir, gerçek bir ödeme sağlayıcısı (iyzico, Stripe vb.) üzerinden para tahsil edilmez. Satın alma ekranında misafire bu açıkça belirtilir.
@@ -61,4 +62,4 @@ sonra `http://localhost:5175` (müşteri) veya `http://localhost:5175/admin.html
 - Rezervasyon kilidi ve atomik satın alma sadece **tekli** satın alma akışında (misafir + personelin tek koltuk satışı) çalışır; personelin "Çoklu Seçim" ile toplu satışı bu kilide tabi değildir (düşük risk, tek operatörlük personel senaryosu).
 - İndirim kodu `redeem_discount_code` ile atomik olarak "kullanılır" (kullanım sayacı hemen artar) — kod uygulanıp satın alma tamamlanmazsa (kullanıcı vazgeçerse) o hak boşa gitmiş olur; hobi ölçekli bir uygulama için kabul edilebilir bir sınırlama.
 - `legal.html` gerçek bir hukuki belge değil, **şablondur** — gerçek kullanım için satıcı/işletme bilgileriyle doldurulup bir hukuk danışmanına gösterilmelidir.
-- `admin.html`'deki `noindex` etiketi sadece iyi niyetli arama motoru botlarına bir "istekte bulunma" niteliğindedir, gerçek bir erişim kısıtlaması değildir — URL'yi bilen herkes sayfayı açabilir (şifre ekranı asıl koruma).
+- `satis.html`/`yonetici.html`'deki `noindex` etiketi sadece iyi niyetli arama motoru botlarına bir "istekte bulunma" niteliğindedir, gerçek bir erişim kısıtlaması değildir — URL'yi bilen herkes sayfayı açabilir (şifre ekranı asıl koruma).

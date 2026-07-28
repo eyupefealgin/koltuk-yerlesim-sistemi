@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yönetici Girişi — Koltuk Yerleşim Sistemi</title>
+<meta name="description" content="Koltuk yerleşim sistemi yönetici girişi — etkinlik yönetimi, satış, check-in.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="icons8-ticket-100.png">
+<meta name="theme-color" content="#FAF8F3">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="admin">
+
+<!-- ============ LOGIN GATE (yönetici) ============ -->
+<!-- Bu, halka açık site DEĞİL — müşteri deneyimi index.html'de, satış
+     girişi satis.html'de. Burada sadece Yönetici şifresi soruluyor —
+     rol seçimi yok, URL'nin kendisi rolü belirliyor. -->
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <div class="login-icon" aria-hidden="true">
+      <img src="icons8-ticket-100.png" alt="" width="34" height="34">
+    </div>
+    <h1>Yönetici Girişi</h1>
+    <p class="login-sub">Devam etmek için şifreni gir.</p>
+
+    <div class="login-password-row" id="passwordRow">
+      <input type="password" id="passwordInput" placeholder="Şifre" autocomplete="current-password">
+      <button class="btn btn-gold" id="passwordSubmit" type="button">Giriş Yap</button>
+    </div>
+    <p class="login-error" id="loginError" hidden>Hatalı şifre, tekrar dene.</p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app-root" id="appRoot" hidden>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">
+        <img src="icons8-ticket-100.png" alt="" width="24" height="24">
+      </span>
+      <span>Koltuk Yerleşim Sistemi</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="backToEventsBtn" type="button" hidden>← Etkinlikler</button>
+      <span class="event-name-badge" id="currentEventNameBadge" hidden></span>
+      <span class="role-badge" id="roleBadge">Misafir</span>
+      <button class="btn btn-ghost admin-only" id="resetAllBtn" type="button" hidden>Tümünü Sıfırla</button>
+      <button class="btn btn-ghost" id="logoutBtn" type="button">Çıkış</button>
+    </div>
+  </div>
+</header>
+
+<div class="event-list-view" id="eventListView">
+  <div class="event-list-header">
+    <h2>Etkinlikler</h2>
+    <div class="event-list-header-actions">
+      <button class="btn btn-ghost-gold" id="openMyTicketBtn" type="button">Biletim Var</button>
+      <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
+    </div>
+  </div>
+  <div class="event-filter-bar">
+    <select id="eventFilterVenue">
+      <option value="">Tüm Türler</option>
+      <option value="sinema">Sinema</option>
+      <option value="tiyatro">Tiyatro</option>
+      <option value="konser">Konser / Etkinlik</option>
+      <option value="futbol">Futbol Sahası</option>
+      <option value="genel">Genel Etkinlik</option>
+    </select>
+    <label class="event-filter-date"><span>Başlangıç</span><input type="date" id="eventFilterDateFrom"></label>
+    <label class="event-filter-date"><span>Bitiş</span><input type="date" id="eventFilterDateTo"></label>
+    <label class="event-filter-price"><span>Min ₺</span><input type="number" id="eventFilterPriceMin" min="0" step="1"></label>
+    <label class="event-filter-price"><span>Maks ₺</span><input type="number" id="eventFilterPriceMax" min="0" step="1"></label>
+    <button class="btn btn-ghost btn-sm" id="eventFilterClearBtn" type="button">Temizle</button>
+  </div>
+
+  <p class="event-empty-hint" id="eventEmptyHint" hidden>Henüz etkinlik yok.</p>
+  <p class="event-empty-hint" id="eventFilterEmptyHint" hidden>Bu filtrelere uyan etkinlik yok.</p>
+  <div class="event-grid" id="eventGrid"></div>
+</div>
+
+<main class="page" id="eventDetailView" hidden>
+
+  <section class="panel settings-panel admin-only">
+    <div id="layoutControls">
+      <div class="settings-row">
+        <label class="field">
+          <span>Sütun Sayısı (En)</span>
+          <input type="number" id="colsInput" min="1" max="40" value="10" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>Satır Sayısı (Boy)</span>
+          <input type="number" id="rowsInput" min="1" max="30" value="8" inputmode="numeric">
+        </label>
+        <div class="field field-static">
+          <span>Toplam Koltuk</span>
+          <strong id="totalPreview">80</strong>
+        </div>
+        <button class="btn btn-primary" id="generateBtn" type="button">Düzeni Oluştur</button>
+      </div>
+
+      <div class="presets" role="group" aria-label="Hazır düzenler">
+        <button class="preset-chip" data-cols="6" data-rows="5" type="button">6×5</button>
+        <button class="preset-chip" data-cols="10" data-rows="8" type="button">10×8</button>
+        <button class="preset-chip" data-cols="12" data-rows="10" type="button">12×10</button>
+        <button class="preset-chip" data-cols="16" data-rows="12" type="button">16×12</button>
+      </div>
+    </div>
+
+    <p class="stadium-note" id="stadiumNote" hidden>Futbol Sahası düzeni sabit bir stadyum şemasıdır (tribün blokları) — sütun/satır ayarı bu türde geçerli değil.</p>
+
+    <div class="venue-type-row">
+      <span class="ticket-prices-label">Etkinlik Türü:</span>
+      <div class="presets" id="venueTypeChips" role="group" aria-label="Etkinlik türü">
+        <button class="preset-chip" data-venue="sinema" type="button">Sinema</button>
+        <button class="preset-chip" data-venue="tiyatro" type="button">Tiyatro</button>
+        <button class="preset-chip" data-venue="konser" type="button">Konser / Etkinlik</button>
+        <button class="preset-chip" data-venue="futbol" type="button">Futbol Sahası</button>
+        <button class="preset-chip" data-venue="genel" type="button">Genel Etkinlik</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">Bilet Türleri ve Fiyatları:</span>
+      <div class="tier-list" id="tierList"></div>
+      <div class="tier-add-row">
+        <input type="text" id="newTierName" placeholder="Yeni bilet türü (ör. Engelli)" maxlength="20">
+        <input type="number" id="newTierPrice" placeholder="Fiyat (₺)" min="0" step="1">
+        <button class="btn btn-primary btn-sm" id="addTierBtn" type="button">+ Ekle</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">İndirim Kodları:</span>
+      <div class="discount-list" id="discountList"></div>
+      <div class="discount-add-row">
+        <input type="text" id="newDiscountCode" placeholder="Kod (ör. ERKEN10)" maxlength="20">
+        <select id="newDiscountType">
+          <option value="percent">%</option>
+          <option value="fixed">₺</option>
+        </select>
+        <input type="number" id="newDiscountValue" placeholder="Değer" min="0" step="1">
+        <input type="number" id="newDiscountMaxUses" placeholder="Limit (opsiyonel)" min="1" step="1">
+        <button class="btn btn-primary btn-sm" id="addDiscountBtn" type="button">+ Ekle</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel status-panel">
+    <div class="status-top">
+      <div class="legend" id="gridFilters" role="group" aria-label="Koltuk filtreleri">
+        <button class="filter-chip is-active" data-filter="all" type="button">Tümü</button>
+        <button class="filter-chip" data-filter="empty" type="button"><i class="swatch empty"></i> Boş</button>
+        <button class="filter-chip" data-filter="male" type="button"><i class="swatch male"></i> Erkek</button>
+        <button class="filter-chip" data-filter="female" type="button"><i class="swatch female"></i> Kadın</button>
+        <button class="filter-chip" data-filter="sold" type="button"><i class="swatch sold-swatch"></i> Satılan</button>
+      </div>
+
+      <div class="capacity-container">
+        <div class="capacity-label">
+          <span>Doluluk Oranı</span>
+          <strong id="capacityPercent">0%</strong>
+        </div>
+        <div class="capacity-bar-bg">
+          <div class="capacity-bar" id="capacityBar" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats" aria-live="polite">
+      <div class="stat"><strong id="statTotal">0</strong><span>Toplam</span></div>
+      <div class="stat"><strong id="statMale">0</strong><span>Erkek</span></div>
+      <div class="stat"><strong id="statFemale">0</strong><span>Kadın</span></div>
+      <div class="stat"><strong id="statEmpty">0</strong><span>Boş</span></div>
+      <div class="stat"><strong id="statSold">0</strong><span>Satılan</span></div>
+      <div class="stat admin-only"><strong id="statRevenue">0 ₺</strong><span>Gelir</span></div>
+    </div>
+  </section>
+
+  <section class="panel revenue-panel admin-only">
+    <h3 class="revenue-title">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5"/>
+        <path d="M12 7.5v9M9.5 9.5h4a2 2 0 0 1 0 4h-3a2 2 0 0 0 0 4h4.5"/>
+      </svg>
+      Ciro Özeti
+    </h3>
+    <div class="revenue-breakdown" id="revenueBreakdown"></div>
+    <div class="revenue-breakdown" id="paymentBreakdown"></div>
+  </section>
+
+  <section class="panel grid-panel">
+    <div class="grid-toolbar">
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="10.5" cy="10.5" r="6.5"/>
+            <path d="M15.5 15.5L20 20" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <input type="text" id="seatSearchInput" placeholder="Koltuk / Blok Ara (ör. 12, VIP, kart)..." maxlength="30">
+        <button id="clearSearchBtn" type="button" hidden>×</button>
+      </div>
+
+      <div class="bulk-toolbar editor-only" id="bulkToolbar">
+        <div class="bulk-mode-toggle" role="group" aria-label="Seçim modu">
+          <button class="mode-chip is-active" id="singleModeBtn" type="button">Tekli Seçim</button>
+          <button class="mode-chip" id="bulkModeBtn" type="button">Çoklu Seçim</button>
+        </div>
+        <button class="btn btn-gold btn-sm" id="startBulkSaleBtn" type="button" hidden>Satışa Başla (<span id="bulkCount">0</span>)</button>
+        <button class="btn btn-ghost-gold btn-sm editor-only" id="openCheckinBtn" type="button">Bilet Doğrula</button>
+      </div>
+    </div>
+
+    <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç</p>
+
+    <div class="screen-curve" id="screenAccent" aria-hidden="true"><span>PERDE</span></div>
+    <div class="grid-scroll">
+      <div class="seat-grid" id="seatGrid"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+</div>
+
+<!-- ============ SEAT MODAL (satış akışı) ============ -->
+<div class="modal-overlay" id="seatModalOverlay" hidden>
+  <div class="modal seat-modal" role="dialog" aria-modal="true" aria-labelledby="seatModalTitle">
+    <button class="modal-close" id="seatModalClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="seatModalTitle">Koltuk</h3>
+    <p class="hold-countdown" id="holdCountdown" hidden></p>
+
+    <div class="modal-step-panel" data-panel="gender">
+      <p class="modal-subhead">1. Cinsiyet Seç</p>
+      <div class="modal-choice-row">
+        <button class="choice-btn choice-male" data-gender="male" type="button">Erkek</button>
+        <button class="choice-btn choice-female" data-gender="female" type="button">Kadın</button>
+      </div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="tier" hidden>
+      <p class="modal-subhead">2. Bilet Türü Seç</p>
+      <div class="modal-choice-row" id="modalTierButtons"></div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="buyer" hidden>
+      <p class="modal-subhead">3. Alıcı Bilgisi</p>
+      <input type="text" id="buyerNameInput" class="buyer-name-input" maxlength="60" placeholder="Ad Soyad">
+      <p class="buyer-note" id="buyerNoteText"></p>
+      <button class="btn btn-primary" id="buyerContinueBtn" type="button">Devam Et</button>
+    </div>
+
+    <div class="modal-step-panel" data-panel="payment" hidden>
+      <p class="modal-subhead">4. Ödeme Yöntemi</p>
+      <p class="payment-disclaimer" id="paymentDisclaimer" hidden>Bu demo bir sistemdir — seçim sadece kayıt amaçlıdır, gerçek bir ödeme alınmaz.</p>
+
+      <div class="discount-row">
+        <input type="text" id="discountCodeInput" placeholder="İndirim Kodu (opsiyonel)" maxlength="30">
+        <button class="btn btn-ghost-gold btn-sm" id="applyDiscountBtn" type="button">Uygula</button>
+      </div>
+      <p class="discount-note" id="discountNoteText" hidden></p>
+      <p class="price-summary" id="priceSummaryText"></p>
+
+      <label class="legal-consent-row" id="legalConsentRow" hidden>
+        <input type="checkbox" id="legalConsentCheckbox">
+        <span><a href="legal.html" target="_blank" rel="noopener">Mesafeli Satış Sözleşmesi ve KVKK Aydınlatma Metni</a>'ni okudum, kabul ediyorum.</span>
+      </label>
+
+      <div class="modal-choice-row">
+        <button class="choice-btn" data-payment="kart" type="button">Kart</button>
+        <button class="choice-btn" data-payment="nakit" type="button">Nakit</button>
+      </div>
+    </div>
+
+    <div class="modal-step-panel" data-panel="info" hidden>
+      <p class="modal-subhead">Koltuk Bilgisi</p>
+      <p class="modal-info-text" id="modalInfoText"></p>
+      <div class="modal-info-actions">
+        <button class="btn btn-ghost-gold editor-only" id="viewTicketBtn" type="button" hidden>Bileti Görüntüle</button>
+        <button class="btn btn-ghost-gold editor-only" id="modalClearSeatBtn" type="button">Koltuğu Boşalt</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CREATE EVENT MODAL ============ -->
+<div class="modal-overlay" id="createEventOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createEventTitle">
+    <button class="modal-close" id="createEventClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="createEventTitle">Yeni Etkinlik</h3>
+
+    <div class="event-form">
+      <label class="field">
+        <span>Etkinlik Adı</span>
+        <input type="text" id="newEventName" maxlength="60" placeholder="ör. Interstellar Gösterimi">
+      </label>
+      <label class="field">
+        <span>Tarih</span>
+        <input type="date" id="newEventDate">
+      </label>
+      <label class="field">
+        <span>Etkinlik Türü</span>
+        <select id="newEventVenue">
+          <option value="sinema">Sinema</option>
+          <option value="tiyatro">Tiyatro</option>
+          <option value="konser">Konser / Etkinlik</option>
+          <option value="futbol">Futbol Sahası</option>
+          <option value="genel">Genel Etkinlik</option>
+        </select>
+      </label>
+      <div class="settings-row" id="newEventDimsRow">
+        <label class="field">
+          <span>Sütun Sayısı</span>
+          <input type="number" id="newEventCols" min="1" max="40" value="10">
+        </label>
+        <label class="field">
+          <span>Satır Sayısı</span>
+          <input type="number" id="newEventRows" min="1" max="30" value="8">
+        </label>
+      </div>
+      <p class="stadium-note" id="newEventStadiumNote" hidden>Futbol Sahası için sabit 44 bloklu stadyum düzeni kullanılır.</p>
+      <button class="btn btn-primary" id="submitCreateEventBtn" type="button">Etkinliği Oluştur</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TICKET VIEW MODAL ============ -->
+<div class="modal-overlay" id="ticketViewOverlay" hidden>
+  <div class="modal ticket-modal" role="dialog" aria-modal="true" aria-labelledby="ticketViewTitle">
+    <button class="modal-close" id="ticketViewClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="ticketViewTitle">Biletiniz Hazır</h3>
+
+    <div class="ticket-card" id="ticketCard">
+      <div class="ticket-event-name" id="ticketEventName"></div>
+      <div class="ticket-seat-label" id="ticketSeatLabel"></div>
+      <div class="ticket-tier-label" id="ticketTierLabel"></div>
+      <div class="ticket-buyer-name" id="ticketBuyerName" hidden></div>
+      <div class="ticket-qr" id="ticketQrHolder"></div>
+      <div class="ticket-code" id="ticketCodeText"></div>
+      <p class="ticket-checkin-status" id="ticketCheckinStatus"></p>
+    </div>
+
+    <div class="ticket-actions">
+      <button class="btn btn-ghost-gold" id="ticketPrintBtn" type="button">Yazdır</button>
+      <button class="btn btn-gold" id="ticketCloseBtn" type="button">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CHECK-IN (BİLET DOĞRULA) MODAL ============ -->
+<div class="modal-overlay" id="checkinOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkinTitle">
+    <button class="modal-close" id="checkinClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="checkinTitle">Bilet Doğrula</h3>
+
+    <div class="checkin-form">
+      <input type="text" id="checkinCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
+      <button class="btn btn-primary" id="checkinVerifyBtn" type="button">Doğrula</button>
+      <div class="checkin-result" id="checkinResult" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BİLETİM VAR MODAL ============ -->
+<div class="modal-overlay" id="myTicketOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myTicketTitle">
+    <button class="modal-close" id="myTicketClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="myTicketTitle">Biletim Var</h3>
+    <p class="buyer-note">Satın alırken sana gösterilen bilet kodunu gir.</p>
+
+    <div class="checkin-form">
+      <input type="text" id="myTicketCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
+      <button class="btn btn-primary" id="myTicketFindBtn" type="button">Bul</button>
+      <div class="checkin-result" id="myTicketResult" hidden></div>
+    </div>
+
+    <div class="my-ticket-history" id="myTicketHistory" hidden>
+      <p class="buyer-note">Bu cihazda daha önce aldığın biletler:</p>
+      <div class="my-ticket-history-list" id="myTicketHistoryList"></div>
+    </div>
+  </div>
+</div>
+
+<script src="qrcode.min.js"></script>
+<script src="supabase.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

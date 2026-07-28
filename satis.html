@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yönetim Paneli — Koltuk Yerleşim Sistemi</title>
-<meta name="description" content="Koltuk yerleşim sistemi personel paneli — etkinlik yönetimi, satış, check-in.">
+<title>Satış Girişi — Koltuk Yerleşim Sistemi</title>
+<meta name="description" content="Koltuk yerleşim sistemi satış girişi — koltuk satışı, check-in.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" href="icons8-ticket-100.png">
 <meta name="theme-color" content="#FAF8F3">
@@ -13,25 +13,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
-<body data-page="admin">
+<body data-page="sales">
 
-<!-- ============ LOGIN GATE (personel) ============ -->
-<!-- Bu, halka açık site DEĞİL — müşteri deneyimi index.html'de. Burada
-     sadece Satış/Yönetici şifre girişi var, misafir seçeneği yok. -->
+<!-- ============ LOGIN GATE (satış) ============ -->
+<!-- Bu, halka açık site DEĞİL — müşteri deneyimi index.html'de, yönetici
+     girişi yonetici.html'de. Burada sadece Satış şifresi soruluyor —
+     rol seçimi yok, URL'nin kendisi rolü belirliyor. -->
 <div class="login-gate" id="loginGate">
   <div class="login-card">
     <div class="login-icon" aria-hidden="true">
       <img src="icons8-ticket-100.png" alt="" width="34" height="34">
     </div>
-    <h1>Yönetim Paneli</h1>
-    <p class="login-sub">Devam etmek için giriş yap.</p>
+    <h1>Satış Girişi</h1>
+    <p class="login-sub">Devam etmek için şifreni gir.</p>
 
-    <div class="login-actions">
-      <button class="btn btn-gold" id="salesLoginBtn" type="button">Satış Girişi</button>
-      <button class="btn btn-ghost-gold" id="adminLoginBtn" type="button">Yönetici Girişi</button>
-    </div>
-
-    <div class="login-password-row" id="passwordRow" hidden>
+    <div class="login-password-row" id="passwordRow">
       <input type="password" id="passwordInput" placeholder="Şifre" autocomplete="current-password">
       <button class="btn btn-gold" id="passwordSubmit" type="button">Giriş Yap</button>
     </div>
