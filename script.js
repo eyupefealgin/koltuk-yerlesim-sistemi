@@ -140,6 +140,7 @@ const eventDetailView = document.getElementById('eventDetailView');
 const eventGridEl = document.getElementById('eventGrid');
 const eventEmptyHint = document.getElementById('eventEmptyHint');
 const eventFilterEmptyHint = document.getElementById('eventFilterEmptyHint');
+const eventFilterName = document.getElementById('eventFilterName');
 const eventFilterVenue = document.getElementById('eventFilterVenue');
 const eventFilterDateFrom = document.getElementById('eventFilterDateFrom');
 const eventFilterDateTo = document.getElementById('eventFilterDateTo');
@@ -1450,6 +1451,10 @@ function computeSeatLabelFor(idx, eventInfo){
   return `Koltuk ${r}-${col}`;
 }
 
+// "Biletim Var" akışından açılan biletlerde iptal butonu gösterilir; burada
+// tutuyoruz ki iptal RPC'si hangi etkinlik/koltuk olduğunu bilsin.
+let ticketCancelContext = null;
+
 function showTicketView(idx, sale, eventInfo){
   document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
   document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo);
@@ -1495,16 +1500,58 @@ function showTicketView(idx, sale, eventInfo){
     }
   }
 
+  // İptal butonu sadece "Biletim Var" akışında (ticketCancelContext dolu) ve
+  // henüz kapıdan giriş yapılmamış biletlerde görünür.
+  const iptalEdilebilir = !!ticketCancelContext && !sale.checkedIn;
+  ticketCancelBtn.hidden = !iptalEdilebilir;
+
   ticketViewOverlay.hidden = false;
 }
 
 function closeTicketView(){
   ticketViewOverlay.hidden = true;
+  ticketCancelContext = null;
+  ticketCancelBtn.hidden = true;
 }
 ticketViewClose.addEventListener('click', closeTicketView);
 ticketCloseBtn.addEventListener('click', closeTicketView);
 ticketViewOverlay.addEventListener('click', (e) => { if(e.target === ticketViewOverlay) closeTicketView(); });
 ticketPrintBtn.addEventListener('click', () => window.print());
+
+// ===== Bilet iptali (müşterinin kendi bileti) =====
+// Yetki bilet kodunun kendisi: cancel_ticket RPC'si koda bakıyor, eşleşmezse
+// iptal etmiyor. Kapıdan giriş yapılmış bilet iptal edilemez (SQL de kontrol
+// ediyor — buradaki gizleme sadece arayüz kolaylığı).
+
+const ticketCancelBtn = document.getElementById('ticketCancelBtn');
+
+ticketCancelBtn.addEventListener('click', async () => {
+  if(!ticketCancelContext || !supabaseClient) return;
+  const { eventId, idx, ticketCode } = ticketCancelContext;
+  if(!confirm('Bu bilet iptal edilecek ve koltuk tekrar satışa açılacak. Emin misin?')) return;
+
+  ticketCancelBtn.disabled = true;
+  try {
+    const { error } = await supabaseClient.rpc('cancel_ticket', {
+      p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+    });
+    if(error) throw error;
+
+    forgetMyTicketLocally(ticketCode);
+    closeTicketView();
+    toast('Bilet iptal edildi.');
+  } catch(err){
+    console.warn('Bilet iptal edilemedi.', err);
+    const msg = (err && err.message) || '';
+    toast(msg.includes('ALREADY_CHECKED_IN')
+      ? 'Bu bilet kapıdan giriş yapmış, iptal edilemez.'
+      : msg.includes('TICKET_NOT_FOUND')
+        ? 'Bilet bulunamadı.'
+        : 'İptal başarısız — buluta bağlanılamadı.');
+  } finally {
+    ticketCancelBtn.disabled = false;
+  }
+});
 
 // ===== Check-in (bilet doğrula) — geçerli etkinliğin belleğe çekilmiş
 // satışları içinde kod arar; sadece Satış/Yönetici erişebilir (editor-only). =====
@@ -1649,6 +1696,13 @@ function saveMyTicketLocally(eventName, seatLabel, ticketCode){
   } catch { /* localStorage kapalı/dolu olabilir — sessizce atla */ }
 }
 
+function forgetMyTicketLocally(ticketCode){
+  try {
+    const list = JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || '[]');
+    localStorage.setItem(MY_TICKETS_KEY, JSON.stringify(list.filter(t => t.ticketCode !== ticketCode)));
+  } catch { /* localStorage kapalı olabilir — sessizce atla */ }
+}
+
 function renderMyTicketHistory(){
   let list = [];
   try { list = JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || '[]'); } catch { /* yoksay */ }
@@ -1724,6 +1778,7 @@ async function findMyTicket(){
 
     const ev = (eventsRes.data || []).find(e => e.id === found.eventId) || { name: '', venue_type: 'sinema', cols: 1 };
     closeMyTicketModal();
+    ticketCancelContext = { eventId: found.eventId, idx: found.idx, ticketCode: code };
     showTicketView(found.idx, found.sale, ev);
   } catch(err){
     console.warn('Bilet aranamadı.', err);
@@ -1737,11 +1792,12 @@ async function findMyTicket(){
 
 openMyTicketBtn.addEventListener('click', openMyTicketModal);
 
-[eventFilterVenue, eventFilterDateFrom, eventFilterDateTo, eventFilterPriceMin, eventFilterPriceMax].forEach(el => {
+[eventFilterName, eventFilterVenue, eventFilterDateFrom, eventFilterDateTo, eventFilterPriceMin, eventFilterPriceMax].forEach(el => {
   el.addEventListener('input', renderEventList);
   el.addEventListener('change', renderEventList);
 });
 eventFilterClearBtn.addEventListener('click', () => {
+  eventFilterName.value = '';
   eventFilterVenue.value = '';
   eventFilterDateFrom.value = '';
   eventFilterDateTo.value = '';
@@ -1926,6 +1982,10 @@ function applySeatsPayload(row){
   TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   POSTER_URL = safeImageUrl(row.poster_url);
+  // İsmi buradan da yazıyoruz: paylaşılan bir linkle doğrudan girildiğinde
+  // etkinlik listesi henüz yüklenmemiş oluyor ve başlık boş kalıyordu.
+  // (Yönetici etkinliği yeniden adlandırırsa da bu sayede anında güncellenir.)
+  if(row.name) currentEventNameBadge.textContent = row.name;
   DYNAMIC_PRICING = (row.dynamic_pricing && typeof row.dynamic_pricing === 'object')
     ? { ...DEFAULT_DYNAMIC, ...row.dynamic_pricing }
     : { ...DEFAULT_DYNAMIC };
@@ -1981,7 +2041,16 @@ async function ensureEventSeatsSync(eventId){
   try {
     const { data, error } = await supabaseClient.from('events').select('*').eq('id', eventId).maybeSingle();
     if(error) throw error;
-    if(data) applySeatsPayload(data);
+
+    // Silinmiş/geçersiz bir etkinliğin linki açılmış olabilir — boş bir
+    // koltuk ekranında bırakmak yerine listeye geri dön.
+    if(!data){
+      toast('Bu etkinlik bulunamadı, silinmiş olabilir.');
+      exitEvent();
+      return;
+    }
+
+    applySeatsPayload(data);
     subscribeSeatsRealtime(eventId);
   } catch(err){
     console.warn('Supabase (events) bağlantısı kurulamadı.', err);
@@ -2028,6 +2097,11 @@ function computeMinTierPrice(ev){
 // Etkinlik listesindeki filtre çubuğu — tamamen istemci tarafında, zaten
 // belleğe çekilmiş `events` dizisini süzer (yeni bir sorgu atmaz).
 function eventMatchesFilters(ev){
+  // Türkçe'ye özgü küçültme ('İ' → 'i', 'I' → 'ı') — normal toLowerCase
+  // "İSTANBUL" yazan bir kullanıcıyı "istanbul" ile eşleştiremezdi.
+  const q = eventFilterName.value.trim().toLocaleLowerCase('tr');
+  if(q && !(ev.name || '').toLocaleLowerCase('tr').includes(q)) return false;
+
   const venueVal = eventFilterVenue.value;
   if(venueVal && ev.venue_type !== venueVal) return false;
 
@@ -2363,8 +2437,33 @@ async function createDemoData(){
 createDemoBtn?.addEventListener('click', createDemoData);
 
 // ===== Entering / leaving an event =====
+// Açık etkinlik URL'de ?etkinlik=<id> olarak tutuluyor: böylece belirli bir
+// etkinliğin linki paylaşılabiliyor ve tarayıcının geri tuşu çalışıyor.
 
-async function enterEvent(id, nameHint){
+const EVENT_URL_PARAM = 'etkinlik';
+
+function eventIdFromUrl(){
+  return new URL(window.location.href).searchParams.get(EVENT_URL_PARAM);
+}
+
+function syncEventUrl(id, replace){
+  const url = new URL(window.location.href);
+  if(id) url.searchParams.set(EVENT_URL_PARAM, id);
+  else url.searchParams.delete(EVENT_URL_PARAM);
+  if(url.href === window.location.href) return;
+  if(replace) history.replaceState({ eventId: id || null }, '', url);
+  else history.pushState({ eventId: id || null }, '', url);
+}
+
+// Geri/ileri tuşu: URL ile ekrandaki durumu eşitle (skipUrl=true ile
+// tekrar history'ye yazmayı engelliyoruz, yoksa döngü olur).
+window.addEventListener('popstate', () => {
+  const id = eventIdFromUrl();
+  if(id && id !== currentEventId) enterEvent(id, null, true);
+  else if(!id && currentEventId) exitEvent(true);
+});
+
+async function enterEvent(id, nameHint, skipUrl){
   clearPushTimers();
   unsubscribeEventChannels();
   // Etkinlik listesi ekranda değilken canlı tutmanın anlamı yok — üstelik
@@ -2376,6 +2475,7 @@ async function enterEvent(id, nameHint){
 
   currentEventId = id;
   sessionStorage.setItem(EVENT_SESSION_KEY, id);
+  if(!skipUrl) syncEventUrl(id);
 
   const ev = nameHint ? { name: nameHint } : events.find(e => e.id === id);
   currentEventNameBadge.textContent = ev ? ev.name : '';
@@ -2404,11 +2504,12 @@ async function enterEvent(id, nameHint){
   if(canEdit()) await ensureEventSalesSync(id);
 }
 
-function exitEvent(){
+function exitEvent(skipUrl){
   clearPushTimers();
   unsubscribeEventChannels();
   currentEventId = null;
   sessionStorage.removeItem(EVENT_SESSION_KEY);
+  if(!skipUrl) syncEventUrl(null);
 
   backToEventsBtn.hidden = true;
   currentEventNameBadge.hidden = true;
@@ -2423,7 +2524,9 @@ function exitEvent(){
   }
 }
 
-backToEventsBtn.addEventListener('click', exitEvent);
+// Ok fonksiyonu şart: doğrudan exitEvent verilirse tıklama olayı skipUrl
+// parametresine düşer ve truthy olduğu için URL güncellenmez.
+backToEventsBtn.addEventListener('click', () => exitEvent());
 
 // ===== Login / role gate (misafir / satış / yönetici) =====
 
@@ -2442,9 +2545,16 @@ function enterApp(role){
 
   ensureEventsSync();
 
-  const savedEventId = sessionStorage.getItem(EVENT_SESSION_KEY);
+  // URL'deki etkinlik, oturum hafızasındakini ezer: paylaşılan bir linki
+  // açan kişi kendi son baktığı etkinliğe değil, linkteki etkinliğe gitmeli.
+  const urlEventId = eventIdFromUrl();
+  const savedEventId = urlEventId || sessionStorage.getItem(EVENT_SESSION_KEY);
   if(savedEventId){
-    enterEvent(savedEventId);
+    // Açılıştaki geri yükleme bir kullanıcı gezinmesi değil — history'ye yeni
+    // kayıt EKLEMEmeli, yoksa geri tuşu listeye değil bu etkinliğe döner.
+    // Adresi replaceState ile yazıyoruz.
+    enterEvent(savedEventId, null, true);
+    syncEventUrl(savedEventId, true);
   } else {
     eventListView.hidden = false;
     eventDetailView.hidden = true;

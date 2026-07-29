@@ -66,6 +66,7 @@
     </div>
   </div>
   <div class="event-filter-bar">
+    <input type="text" id="eventFilterName" class="event-filter-name" maxlength="60" placeholder="Etkinlik ara...">
     <select id="eventFilterVenue">
       <option value="">Tüm Türler</option>
       <option value="sinema">Sinema</option>
@@ -404,6 +405,7 @@
       <button class="btn btn-ghost-gold" id="ticketPrintBtn" type="button">Yazdır</button>
       <button class="btn btn-gold" id="ticketCloseBtn" type="button">Kapat</button>
     </div>
+    <button class="btn btn-danger-ghost ticket-cancel-btn" id="ticketCancelBtn" type="button" hidden>Bileti İptal Et</button>
   </div>
 </div>
 

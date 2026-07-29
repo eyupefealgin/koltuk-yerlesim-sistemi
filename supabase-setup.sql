@@ -290,6 +290,47 @@ from (
 ) sub
 where e.id = sub.id;
 
+-- ============================================================
+-- BILET IPTALI (musterinin kendi bileti)
+-- ============================================================
+-- Yetkilendirme bilet kodunun kendisi: kodu bilmeyen iptal edemez.
+-- Kapidan giris yapilmis (checkedIn) bir bilet iptal edilemez.
+create or replace function cancel_ticket(p_event_id uuid, p_idx int, p_ticket_code text)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_sale jsonb;
+begin
+  select seat_sales -> p_idx into v_sale
+  from event_sales where event_id = p_event_id;
+
+  if v_sale is null or jsonb_typeof(v_sale) = 'null' then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  if v_sale ->> 'ticketCode' is distinct from p_ticket_code then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  if coalesce((v_sale ->> 'checkedIn')::boolean, false) then
+    raise exception 'ALREADY_CHECKED_IN';
+  end if;
+
+  update events
+  set seat_states = jsonb_set(seat_states, array[p_idx::text], '"e"'::jsonb),
+      updated_at = now()
+  where id = p_event_id;
+
+  update event_sales
+  set seat_sales = jsonb_set(seat_sales, array[p_idx::text], 'null'::jsonb),
+      updated_at = now()
+  where event_id = p_event_id;
+end;
+$$;
+grant execute on function cancel_ticket(uuid, int, text) to anon, authenticated;
+
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra
 -- istersen eski tablolari elle silebilirsin:

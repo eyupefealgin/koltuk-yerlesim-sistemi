@@ -942,6 +942,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   letter-spacing: .4px;
 }
 .event-filter-price input{ width: 90px; }
+.event-filter-name{ flex: 1 1 200px; min-width: 160px; }
 
 .event-grid{
   display: grid;
@@ -1580,6 +1581,15 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-radius: 999px;
 }
 .ticket-checkin-status{ font-size: .78rem; color: var(--text-muted); margin-top: 8px; }
+.btn-danger-ghost{
+  background: transparent;
+  border: 1px solid rgba(217, 80, 80, 0.35);
+  color: var(--danger);
+}
+.btn-danger-ghost:hover{ background: rgba(217, 80, 80, 0.08); border-color: var(--danger); }
+.ticket-cancel-btn{ width: 100%; margin-top: 10px; }
+.ticket-cancel-btn[hidden]{ display: none; }
+
 .ticket-actions{ display: flex; gap: 10px; justify-content: center; }
 .ticket-actions .btn{ flex: 1 1 auto; }
 
@@ -1800,6 +1810,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 
   /* Filtre çubuğu: dar ekranda tek/çift sütuna insin, taşmasın */
   .event-filter-bar{ padding: 12px; gap: 10px; }
+  .event-filter-name{ flex: 1 1 100%; }
   .event-filter-bar select{ flex: 1 1 100%; }
   .event-filter-date, .event-filter-price{ flex: 1 1 calc(50% - 5px); }
   .event-filter-date input, .event-filter-price input{ width: 100%; }
