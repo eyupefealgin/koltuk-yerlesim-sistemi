@@ -31,6 +31,10 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 - Her etkinlik için sütun/satır sayısı girilir, hazır düzen şablonları (6×5, 10×8, 12×10, 16×12) — sadece Yönetici
 - **Bilet türlerini yönetme**: her etkinliğin kendi bilet türleri/fiyatları var; ekle, sil, fiyatını değiştir — sadece Yönetici; daha önce satılmış koltuklar satıldığı andaki isim/fiyatı korur
 - Canlı istatistik + **Ciro Özeti** (bilet türüne göre + ödeme yöntemine göre — Kart/Nakit) — Satış ve Yönetici görür, Misafir görmez
+- **Etkinlik afişi**: her etkinliğe görsel URL'i eklenebilir; etkinlik kartında afiş olarak gösterilir. Sadece `http(s)` adreslerine izin verilir, kırık/erişilemeyen görsel kartı bozmaz (kendini gizler)
+- **Dinamik fiyatlandırma**: etkinlik başına "doluluk %X'i geçince fiyatlar %Y artsın" kuralı. Zam **indirim kodundan önce** uygulanır ve satın alma ekranında adım adım gösterilir (ör. `100₺ → 115₺ (yoğun talep) → 92₺ (kod: ERKEN20)`); bilet üzerinde de fiyatın neden değiştiği yazar
+- **Satış grafiği**: her satışa `soldAt` zaman damgası yazılır, Ciro Özeti'nde son 14 günün günlük satış/ciro dağılımı çubuk grafik olarak görünür. Bu özellikten önce satılmış (zaman damgasız) biletler "Tarihsiz" satırında toplanır, sessizce kaybolmaz
+- **Kamerayla QR okutma**: Bilet Doğrula ekranında kamerayla QR taranabilir (`BarcodeDetector` API). Tarayıcı desteklemiyorsa, kamera izni verilmezse veya sayfa `https` değilse ayrı ayrı açıklayıcı mesaj gösterilir ve elle kod girişi her zaman kullanılabilir kalır; modal kapanınca kamera bırakılır
 - **Demo verisi**: Yönetici panelindeki "Demo Verisi Oluştur" butonu, sunum/portfolyo için 4 gerçekçi örnek etkinlik (sinema/tiyatro/konser/futbol) ve bir miktar satış üretir — mevcut etkinlikleri silmez
 - **Düşük veri trafiği**: bir koltuk değiştiğinde (a) etkinlik listesi kanalı, etkinlik içindeyken kapatılır — daha önce aynı satır iki ayrı kanaldan birden geliyordu; (b) liste kanalı artık tüm etkinlikleri yeniden indirmek yerine gelen payload'ı yerel diziye yamalar; (c) koltuk durumları `"empty"/"male"/"female"` yerine `"e"/"m"/"f"` saklanır (44 koltukta 353 → 177 bayt). Sonuç: koltuk başına ~2.8 kB WebSocket + 1.2 kB tam yeniden indirme yerine tek bir ~1.2 kB'lık frame
 - **Çoklu cihaz senkronizasyonu + veri azaltma**: `events` tablosu (etkinlik adı/tarih/tür/doluluk + bilet türü **fiyat listesi**) herkese açık — misafirin kendi bileti alabilmesi için fiyatları görmesi gerekiyor. `event_sales` (kimin ne aldığı: alıcı adı, ödeme yöntemi, bilet kodu) sadece Satış/Yönetici tarafından toplu okunur; misafir sadece **kendi** satın alma işlemini `purchase_seat` fonksiyonuyla yazar, başka kimsenin satış kaydını asla okumaz
@@ -41,9 +45,10 @@ HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode
 ## Kurulum
 
 1. `supabase-setup.sql` dosyasındaki SQL'in **tamamını** Supabase projenin **SQL Editor**'ünde çalıştır — `events`/`event_sales`/`seat_holds` tablolarını, `purchase_seat`/`reserve_seat`/`release_seat_hold`/`redeem_discount_code` fonksiyonlarını oluşturur. Script baştan sona tekrar tekrar çalıştırılabilir (idempotent), daha önce kısmen çalıştırdıysan sorun olmaz
-2. Üç tabloda da (**events**, **event_sales**, **seat_holds**) **Row Level Security kapalı** olmalı (anon key ile okuma/yazma için) — açık gelirse: `alter table events disable row level security; alter table event_sales disable row level security; alter table seat_holds disable row level security;`
-3. `script.js` içindeki `SUPABASE_URL` / `SUPABASE_KEY` değerlerini kendi projenle değiştir
-4. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
+2. Daha önceki bir sürümden geliyorsan yeni sütunlar için: `alter table events add column if not exists poster_url text;` ve `alter table events add column if not exists dynamic_pricing jsonb not null default '{"enabled":false,"threshold":80,"increase":10}'::jsonb;` (script'in tamamı zaten bunları içeriyor)
+3. Üç tabloda da (**events**, **event_sales**, **seat_holds**) **Row Level Security kapalı** olmalı (anon key ile okuma/yazma için) — açık gelirse: `alter table events disable row level security; alter table event_sales disable row level security; alter table seat_holds disable row level security;`
+4. `script.js` içindeki `SUPABASE_URL` / `SUPABASE_KEY` değerlerini kendi projenle değiştir
+5. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
 
 ## Çalıştırma
 `index.html` (müşteri), `satis.html` veya `yonetici.html` (personel) dosyasını bir tarayıcıda aç, ya da:
@@ -64,4 +69,7 @@ sonra `http://localhost:5175`, `http://localhost:5175/satis.html` veya `http://l
 - Rezervasyon kilidi ve atomik satın alma sadece **tekli** satın alma akışında (misafir + personelin tek koltuk satışı) çalışır; personelin "Çoklu Seçim" ile toplu satışı bu kilide tabi değildir (düşük risk, tek operatörlük personel senaryosu).
 - İndirim kodu `redeem_discount_code` ile atomik olarak "kullanılır" (kullanım sayacı hemen artar) — kod uygulanıp satın alma tamamlanmazsa (kullanıcı vazgeçerse) o hak boşa gitmiş olur; hobi ölçekli bir uygulama için kabul edilebilir bir sınırlama.
 - `legal.html` gerçek bir hukuki belge değil, **şablondur** — gerçek kullanım için satıcı/işletme bilgileriyle doldurulup bir hukuk danışmanına gösterilmelidir.
+- Kamerayla QR okuma `BarcodeDetector` API'sine dayanır; bu API her tarayıcıda bulunmaz (Safari/Firefox'ta genelde yok). Desteklenmeyen ortamlarda elle kod girişi devreye girer — geliştirme sırasında **yedek yol doğrulandı, kamerayla okumanın kendisi gerçek bir cihazda denenmeli**.
+- Dinamik fiyatlandırma yalnızca **yeni** satışları etkiler; daha önce satılmış biletler satıldıkları andaki fiyatı korur.
+- Afiş görselleri dış bir adresten (ör. Unsplash) yüklenir — o adres erişilemez olursa görsel kartta gösterilmez.
 - `satis.html`/`yonetici.html`'deki `noindex` etiketi sadece iyi niyetli arama motoru botlarına bir "istekte bulunma" niteliğindedir, gerçek bir erişim kısıtlaması değildir — URL'yi bilen herkes sayfayı açabilir (şifre ekranı asıl koruma).

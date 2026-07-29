@@ -196,6 +196,16 @@ grant execute on function purchase_seat(uuid, int, text, jsonb, text) to anon, a
 -- ============================================================
 alter table events add column if not exists discount_codes jsonb not null default '[]'::jsonb;
 
+-- ============================================================
+-- AFIS GORSELI + DINAMIK FIYATLANDIRMA (etkinlik basina)
+-- ============================================================
+-- poster_url: etkinlik kartinda/detayinda gosterilen afis (opsiyonel).
+-- dynamic_pricing: {"enabled":bool,"threshold":int,"increase":int}
+--   doluluk >= threshold% olunca fiyatlara increase% zam uygulanir.
+alter table events add column if not exists poster_url text;
+alter table events add column if not exists dynamic_pricing jsonb not null
+  default '{"enabled":false,"threshold":80,"increase":10}'::jsonb;
+
 -- Bir indirim kodunu atomik olarak "kullan": kod yoksa CODE_NOT_FOUND,
 -- kullanim limiti dolduysa CODE_EXHAUSTED hatasi verir; gecerliyse
 -- used_count'u +1 yapar ve guncel kod kaydini (tip/deger) dondurur --

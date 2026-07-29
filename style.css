@@ -1658,6 +1658,125 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .my-ticket-history-item .hist-seat{ color: var(--text-muted); font-size: .78rem; }
 
 /* ═══════════════════════════════════════
+   AFİŞ GÖRSELİ
+   ═══════════════════════════════════════ */
+.event-card-poster{
+  width: calc(100% + 48px);
+  margin: -22px -24px 4px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: block;
+  background: var(--gold-subtle);
+}
+.poster-row{ display: flex; gap: 10px; flex-wrap: wrap; }
+.poster-row input{
+  flex: 1 1 260px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: .9rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.7);
+  min-height: 44px;
+}
+.poster-row input:focus{
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-glow);
+  background: #fff;
+}
+.poster-preview{
+  margin-top: 12px;
+  max-width: 260px;
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.poster-preview[hidden]{ display: none; }
+
+/* ═══════════════════════════════════════
+   DİNAMİK FİYATLANDIRMA
+   ═══════════════════════════════════════ */
+.dynamic-toggle{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .9rem;
+  color: var(--text);
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.dynamic-toggle input{ width: 17px; height: 17px; accent-color: var(--gold); }
+.dynamic-row{ display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.dynamic-row .field{ min-width: 130px; }
+.dynamic-row input{
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: .9rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.7);
+  min-height: 44px;
+}
+.dynamic-note{ font-size: .82rem; color: var(--text-secondary); margin: 12px 0 0; }
+.dynamic-note.active{ color: var(--gold-dim); font-weight: 600; }
+
+.surge-badge{
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--gold-dim);
+  background: var(--gold-subtle);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-left: 6px;
+}
+
+/* ═══════════════════════════════════════
+   SATIŞ GRAFİĞİ
+   ═══════════════════════════════════════ */
+.sales-chart{ margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.sales-chart[hidden]{ display: none; }
+.sales-chart-title{ font-size: .95rem; font-weight: 700; color: var(--text-bright); margin: 0 0 14px; }
+.sales-chart-body{ display: flex; flex-direction: column; gap: 8px; }
+.chart-row{ display: flex; align-items: center; gap: 12px; font-size: .82rem; }
+.chart-label{ flex: 0 0 74px; color: var(--text-muted); font-weight: 600; }
+.chart-track{
+  flex: 1 1 auto;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.chart-bar{
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  min-width: 3px;
+  transition: width .5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chart-value{ flex: 0 0 auto; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+
+/* ═══════════════════════════════════════
+   KAMERA İLE QR TARAMA
+   ═══════════════════════════════════════ */
+.scanner-box{ display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.scanner-box[hidden]{ display: none; }
+.scanner-box video{
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--gold);
+  background: #000;
+}
+.scanner-note{ font-size: .8rem; color: var(--text-secondary); margin: 0; text-align: center; }
+.scanner-note[hidden]{ display: none; }
+
+/* ═══════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════ */
 @media (max-width: 640px){
@@ -1672,6 +1791,51 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   .topbar-actions .btn{ flex: 1 1 auto; }
   .login-card{ padding: 32px 24px; }
   .panel{ padding: 22px 20px; }
+
+  /* Etkinlik listesi */
+  .event-list-view{ padding: 22px 16px 60px; }
+  .event-list-header-actions{ width: 100%; }
+  .event-list-header-actions .btn{ flex: 1 1 auto; }
+  .event-grid{ grid-template-columns: 1fr; }
+
+  /* Filtre çubuğu: dar ekranda tek/çift sütuna insin, taşmasın */
+  .event-filter-bar{ padding: 12px; gap: 10px; }
+  .event-filter-bar select{ flex: 1 1 100%; }
+  .event-filter-date, .event-filter-price{ flex: 1 1 calc(50% - 5px); }
+  .event-filter-date input, .event-filter-price input{ width: 100%; }
+  .event-filter-bar .btn{ flex: 1 1 100%; }
+
+  /* Koltuk ızgarası araç çubuğu */
+  .grid-toolbar{ flex-direction: column; align-items: stretch; }
+  .search-box{ max-width: none; }
+  .bulk-toolbar{ justify-content: center; }
+
+  /* Stadyum şeması: dar ekranda blokları küçült — yine de yatay kaydırma
+     gerekiyor, 10 sütunu 375px'e sığdırmak okunabilirliği bitirirdi. */
+  .seat-grid.stadium-mode{
+    grid-template-columns: repeat(10, minmax(44px, 52px));
+    grid-template-rows: repeat(8, minmax(38px, auto));
+  }
+  .stadium-block{ font-size: .56rem; padding: 3px 1px; }
+
+  /* Yönetici panelindeki yeni alanlar */
+  .poster-row input{ flex: 1 1 100%; }
+  .poster-row .btn{ flex: 1 1 100%; }
+  .dynamic-row{ gap: 10px; }
+  .dynamic-row .field{ flex: 1 1 calc(50% - 5px); min-width: 0; }
+  .dynamic-row .btn{ flex: 1 1 100%; }
+  .discount-add-row input[type="text"]{ flex: 1 1 100%; }
+  .discount-add-row input[type="number"]{ width: calc(50% - 5px); }
+
+  /* Satış grafiği */
+  .chart-label{ flex: 0 0 58px; font-size: .74rem; }
+  .chart-value{ font-size: .74rem; }
+  .chart-row{ gap: 8px; }
+
+  /* Modal ve bilet */
+  .modal{ padding: 24px 20px; }
+  .ticket-qr svg{ width: 140px; height: 140px; }
+  .modal-info-actions .btn{ flex: 1 1 100%; }
 }
 
 /* Custom scrollbar */

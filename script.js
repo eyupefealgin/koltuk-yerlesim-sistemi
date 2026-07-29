@@ -155,6 +155,7 @@ const newEventDate = document.getElementById('newEventDate');
 const newEventVenue = document.getElementById('newEventVenue');
 const newEventCols = document.getElementById('newEventCols');
 const newEventRows = document.getElementById('newEventRows');
+const newEventPoster = document.getElementById('newEventPoster');
 const newEventDimsRow = document.getElementById('newEventDimsRow');
 const newEventStadiumNote = document.getElementById('newEventStadiumNote');
 const submitCreateEventBtn = document.getElementById('submitCreateEventBtn');
@@ -217,6 +218,29 @@ const newDiscountValue = document.getElementById('newDiscountValue');
 const newDiscountMaxUses = document.getElementById('newDiscountMaxUses');
 const addDiscountBtn = document.getElementById('addDiscountBtn');
 
+// Afiş görseli (Yönetici)
+const eventPosterInput = document.getElementById('eventPosterInput');
+const savePosterBtn = document.getElementById('savePosterBtn');
+const posterPreview = document.getElementById('posterPreview');
+
+// Dinamik fiyatlandırma (Yönetici)
+const dynEnabled = document.getElementById('dynEnabled');
+const dynThreshold = document.getElementById('dynThreshold');
+const dynIncrease = document.getElementById('dynIncrease');
+const saveDynBtn = document.getElementById('saveDynBtn');
+const dynStatusNote = document.getElementById('dynStatusNote');
+
+// Satış grafiği
+const salesChart = document.getElementById('salesChart');
+const salesChartBody = document.getElementById('salesChartBody');
+
+// Kamerayla QR tarama
+const checkinScanBtn = document.getElementById('checkinScanBtn');
+const scannerBox = document.getElementById('scannerBox');
+const scannerVideo = document.getElementById('scannerVideo');
+const scannerStopBtn = document.getElementById('scannerStopBtn');
+const scannerNote = document.getElementById('scannerNote');
+
 // Ticket view (QR + bilet kodu)
 const ticketViewOverlay = document.getElementById('ticketViewOverlay');
 const ticketViewClose = document.getElementById('ticketViewClose');
@@ -259,6 +283,9 @@ let holdCountdownInterval = null;
 let holdExpiresAt = null;
 let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
 let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.discount_codes)
+let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
+const DEFAULT_DYNAMIC = { enabled: false, threshold: 80, increase: 10 };
+let DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC }; // events.dynamic_pricing
 
 function canEdit(){
   return currentRole === 'admin' || currentRole === 'sales';
@@ -619,6 +646,73 @@ function updateRevenueBreakdown(totalRevenue){
     row.innerHTML = `<span>${label}</span><span>${amount} ₺</span>`;
     paymentBreakdownEl.appendChild(row);
   });
+
+  renderSalesChart();
+}
+
+// Güne göre satış dağılımı. soldAt zaman damgası bu özellikten önce
+// satılmış biletlerde yok — onları "Tarihsiz" tek bir satırda topluyoruz ki
+// grafik sessizce eksik veri göstermesin.
+function renderSalesChart(){
+  if(!salesChart) return;
+
+  const byDay = new Map();
+  let undated = { count: 0, revenue: 0 };
+
+  seatSales.forEach(s => {
+    if(!s) return;
+    if(!s.soldAt){ undated.count++; undated.revenue += s.price; return; }
+    const day = String(s.soldAt).slice(0, 10);
+    if(!byDay.has(day)) byDay.set(day, { count: 0, revenue: 0 });
+    const entry = byDay.get(day);
+    entry.count++;
+    entry.revenue += s.price;
+  });
+
+  if(byDay.size === 0 && undated.count === 0){
+    salesChart.hidden = true;
+    return;
+  }
+
+  const rows = [...byDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-14)   // son 14 gün yeter, grafik sonsuza kadar uzamasın
+    .map(([day, v]) => ({
+      label: new Date(`${day}T00:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
+      ...v,
+    }));
+
+  if(undated.count) rows.push({ label: 'Tarihsiz', ...undated });
+
+  const max = Math.max(...rows.map(r => r.count), 1);
+
+  salesChartBody.innerHTML = '';
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'chart-row';
+
+    const label = document.createElement('span');
+    label.className = 'chart-label';
+    label.textContent = r.label;
+
+    const track = document.createElement('div');
+    track.className = 'chart-track';
+    const bar = document.createElement('div');
+    bar.className = 'chart-bar';
+    bar.style.width = `${Math.round((r.count / max) * 100)}%`;
+    track.appendChild(bar);
+
+    const value = document.createElement('span');
+    value.className = 'chart-value';
+    value.textContent = `${r.count} · ${r.revenue}₺`;
+
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(value);
+    salesChartBody.appendChild(row);
+  });
+
+  salesChart.hidden = false;
 }
 
 function toast(msg){
@@ -859,6 +953,115 @@ addDiscountBtn.addEventListener('click', addDiscountCode);
   });
 });
 
+// ===== Afiş görseli (etkinlik başına, sadece Yönetici) =====
+
+// Afiş URL'i yöneticinin serbestçe girdiği bir metin ve <img src> olarak
+// kullanılıyor; sadece http(s) şemasına izin veriyoruz ki "javascript:" gibi
+// bir şey yapıştırılıp tıklanabilir bir güvenlik açığına dönüşmesin.
+function safeImageUrl(raw){
+  const url = (raw || '').trim();
+  if(!url) return null;
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderPosterEditor(){
+  eventPosterInput.value = POSTER_URL || '';
+  if(POSTER_URL){
+    posterPreview.src = POSTER_URL;
+    posterPreview.hidden = false;
+  } else {
+    posterPreview.removeAttribute('src');
+    posterPreview.hidden = true;
+  }
+}
+
+savePosterBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const raw = eventPosterInput.value.trim();
+  const url = raw ? safeImageUrl(raw) : null;
+
+  if(raw && !url){
+    toast('Geçersiz adres — http:// veya https:// ile başlamalı.');
+    return;
+  }
+
+  savePosterBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    poster_url: url, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  savePosterBtn.disabled = false;
+
+  if(error){ toast('Afiş kaydedilemedi.'); return; }
+  POSTER_URL = url;
+  renderPosterEditor();
+  toast(url ? 'Afiş kaydedildi.' : 'Afiş kaldırıldı.');
+});
+
+// ===== Dinamik fiyatlandırma (etkinlik başına, sadece Yönetici) =====
+// Doluluk oranı eşiği geçince bilet fiyatlarına yüzde zam uygulanır.
+// Zam, indirim kodundan ÖNCE hesaplanır: önce zamlı fiyat bulunur,
+// indirim onun üzerine iner.
+
+function currentOccupancyPercent(){
+  const total = seatStates.length;
+  if(!total) return 0;
+  return Math.round((seatStates.filter(isSeatTaken).length / total) * 100);
+}
+
+function isSurgeActive(){
+  return !!(DYNAMIC_PRICING && DYNAMIC_PRICING.enabled
+    && currentOccupancyPercent() >= Number(DYNAMIC_PRICING.threshold || 0));
+}
+
+function effectiveTierPrice(tier){
+  if(!isSurgeActive()) return tier.price;
+  const inc = Number(DYNAMIC_PRICING.increase || 0);
+  return Math.max(0, Math.round(tier.price * (1 + inc / 100)));
+}
+
+function renderDynamicPricingEditor(){
+  dynEnabled.checked = !!DYNAMIC_PRICING.enabled;
+  dynThreshold.value = DYNAMIC_PRICING.threshold ?? 80;
+  dynIncrease.value = DYNAMIC_PRICING.increase ?? 10;
+
+  const occ = currentOccupancyPercent();
+  if(!DYNAMIC_PRICING.enabled){
+    dynStatusNote.className = 'dynamic-note';
+    dynStatusNote.textContent = `Kapalı. Şu anki doluluk: %${occ}`;
+  } else if(isSurgeActive()){
+    dynStatusNote.className = 'dynamic-note active';
+    dynStatusNote.textContent = `Aktif — doluluk %${occ}, fiyatlara %${DYNAMIC_PRICING.increase} zam uygulanıyor.`;
+  } else {
+    dynStatusNote.className = 'dynamic-note';
+    dynStatusNote.textContent = `Beklemede — doluluk %${occ}, eşik %${DYNAMIC_PRICING.threshold}.`;
+  }
+}
+
+saveDynBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const next = {
+    enabled: dynEnabled.checked,
+    threshold: Math.min(100, Math.max(1, Math.round(Number(dynThreshold.value) || 80))),
+    increase: Math.min(200, Math.max(1, Math.round(Number(dynIncrease.value) || 10))),
+  };
+
+  saveDynBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    dynamic_pricing: next, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveDynBtn.disabled = false;
+
+  if(error){ toast('Ayar kaydedilemedi.'); return; }
+  DYNAMIC_PRICING = next;
+  renderDynamicPricingEditor();
+  toast('Dinamik fiyatlandırma kaydedildi.');
+});
+
 // ===== Seat modal: cinsiyet → bilet türü → alıcı bilgisi → ödeme yöntemi =====
 
 function showModalPanel(name){
@@ -874,11 +1077,15 @@ function seatLabelFor(idx){
 
 function renderModalTierButtons(){
   modalTierButtonsEl.innerHTML = '';
+  const surge = isSurgeActive();
   TICKET_TIERS.forEach(tier => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'choice-btn';
-    btn.textContent = `${tier.label} (${tier.price}₺)`;
+    const price = effectiveTierPrice(tier);
+    btn.textContent = surge && price !== tier.price
+      ? `${tier.label} (${price}₺ · yoğun talep)`
+      : `${tier.label} (${price}₺)`;
     btn.addEventListener('click', () => {
       modalTier = tier.id;
       buyerNameInput.value = '';
@@ -1083,10 +1290,22 @@ function computeDiscountedPrice(price, discount){
 function updatePriceSummary(){
   const tier = TICKET_TIERS.find(t => t.id === modalTier);
   if(!tier){ priceSummaryText.textContent = ''; return; }
-  const finalPrice = computeDiscountedPrice(tier.price, modalDiscount);
-  priceSummaryText.textContent = modalDiscount
-    ? `${tier.label}: ${tier.price}₺ → ${finalPrice}₺ (kod: ${modalDiscount.code})`
-    : `${tier.label}: ${tier.price}₺`;
+
+  const surged = effectiveTierPrice(tier);          // önce yoğun talep zammı
+  const finalPrice = computeDiscountedPrice(surged, modalDiscount); // sonra indirim
+  const surgeApplied = surged !== tier.price;
+
+  let text = `${tier.label}: `;
+  if(surgeApplied && modalDiscount){
+    text += `${tier.price}₺ → ${surged}₺ (yoğun talep) → ${finalPrice}₺ (kod: ${modalDiscount.code})`;
+  } else if(surgeApplied){
+    text += `${tier.price}₺ → ${surged}₺ (yoğun talep)`;
+  } else if(modalDiscount){
+    text += `${tier.price}₺ → ${finalPrice}₺ (kod: ${modalDiscount.code})`;
+  } else {
+    text += `${tier.price}₺`;
+  }
+  priceSummaryText.textContent = text;
 }
 
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
@@ -1097,11 +1316,17 @@ document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment
 });
 
 function buildSaleRecord(tier, payment){
-  const finalPrice = computeDiscountedPrice(tier.price, modalDiscount);
+  const surged = effectiveTierPrice(tier);
+  const finalPrice = computeDiscountedPrice(surged, modalDiscount);
+  const changed = finalPrice !== tier.price;
   return {
     tier: tier.id, label: tier.label, price: finalPrice, payment,
-    originalPrice: modalDiscount ? tier.price : null,
+    // originalPrice, biletin üzerinde "şu fiyattan şuna" gösterebilmek için —
+    // fiyat zam veya indirim yüzünden liste fiyatından farklıysa doldurulur.
+    originalPrice: changed ? tier.price : null,
     discountCode: modalDiscount ? modalDiscount.code : null,
+    surged: surged !== tier.price,
+    soldAt: new Date().toISOString(),   // satış grafiği bunu kullanıyor
     buyerName: modalBuyerName || null,
     ticketCode: generateTicketCode(),
     checkedIn: false,
@@ -1228,9 +1453,20 @@ function computeSeatLabelFor(idx, eventInfo){
 function showTicketView(idx, sale, eventInfo){
   document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
   document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo);
-  const priceText = sale.originalPrice
-    ? `${sale.label} — ${sale.originalPrice}₺ → ${sale.price}₺ (kod: ${sale.discountCode}) — ${paymentLabel(sale.payment) || '-'}`
-    : `${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
+  // Fiyat liste fiyatından farklıysa sebebini de yaz — zam mı, indirim mi,
+  // ikisi birden mi. (Eskiden indirim kodu yokken bile "kod: null" yazıyordu.)
+  const odeme = paymentLabel(sale.payment) || '-';
+  let priceText;
+  if(sale.originalPrice){
+    const sebep = [
+      sale.surged ? 'yoğun talep' : null,
+      sale.discountCode ? `kod: ${sale.discountCode}` : null,
+    ].filter(Boolean).join(' + ');
+    priceText = `${sale.label} — ${sale.originalPrice}₺ → ${sale.price}₺`
+      + (sebep ? ` (${sebep})` : '') + ` — ${odeme}`;
+  } else {
+    priceText = `${sale.label} — ${sale.price}₺ (${odeme})`;
+  }
   document.getElementById('ticketTierLabel').textContent = priceText;
 
   const buyerEl = document.getElementById('ticketBuyerName');
@@ -1277,12 +1513,90 @@ function openCheckinModal(){
   if(!canEdit()) return; // buton CSS ile de gizli (.editor-only) — JS'te ek kontrol
   checkinCodeInput.value = '';
   checkinResultEl.hidden = true;
+  scannerNote.hidden = true;
   checkinOverlay.hidden = false;
   checkinCodeInput.focus();
 }
 function closeCheckinModal(){
+  stopScanner();   // modal kapanınca kamera mutlaka bırakılmalı
   checkinOverlay.hidden = true;
 }
+
+// ===== Kamerayla QR okuma =====
+// BarcodeDetector desteklenmiyorsa veya kamera izni yoksa sessizce elle
+// giriş yedeğine düşüyoruz — check-in her koşulda yapılabilir kalmalı.
+
+let scanStream = null;
+let scanTimer = null;
+let scanning = false;
+
+function showScannerNote(msg){
+  scannerNote.textContent = msg;
+  scannerNote.hidden = false;
+}
+
+async function startScanner(){
+  scannerNote.hidden = true;
+
+  if(typeof window.BarcodeDetector === 'undefined'){
+    showScannerNote('Bu tarayıcı kamerayla QR okumayı desteklemiyor (Chrome/Edge veya Android önerilir). Kodu elle girebilirsin.');
+    return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){
+    showScannerNote('Kameraya erişilemiyor — sayfanın https üzerinden açıldığından emin ol.');
+    return;
+  }
+
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch(err){
+    showScannerNote(err && err.name === 'NotAllowedError'
+      ? 'Kamera izni verilmedi. Tarayıcı ayarlarından izin verip tekrar dene.'
+      : 'Kamera açılamadı.');
+    return;
+  }
+
+  scannerVideo.srcObject = scanStream;
+  await scannerVideo.play().catch(() => {});
+  scannerBox.hidden = false;
+  checkinScanBtn.hidden = true;
+  showScannerNote('QR kodu kameraya gösterin.');
+
+  const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+  scanning = true;
+
+  const tick = async () => {
+    if(!scanning) return;
+    try {
+      const codes = await detector.detect(scannerVideo);
+      const value = codes && codes.length ? String(codes[0].rawValue || '').trim() : '';
+      if(value){
+        checkinCodeInput.value = value;
+        stopScanner();
+        verifyTicket();
+        return;
+      }
+    } catch { /* bu kare okunamadı, sonrakinde devam */ }
+    scanTimer = setTimeout(tick, 250);
+  };
+  tick();
+}
+
+function stopScanner(){
+  scanning = false;
+  clearTimeout(scanTimer);
+  scanTimer = null;
+  if(scanStream){
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+  scannerVideo.srcObject = null;
+  scannerBox.hidden = true;
+  checkinScanBtn.hidden = false;
+}
+
+checkinScanBtn.addEventListener('click', startScanner);
+scannerStopBtn.addEventListener('click', () => { stopScanner(); scannerNote.hidden = true; });
 
 function showCheckinResult(kind, text){
   checkinResultEl.className = `checkin-result ${kind}`;
@@ -1611,6 +1925,10 @@ function applySeatsPayload(row){
   if(row.venue_type && VENUE_TYPES[row.venue_type]) venueType = row.venue_type;
   TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
+  POSTER_URL = safeImageUrl(row.poster_url);
+  DYNAMIC_PRICING = (row.dynamic_pricing && typeof row.dynamic_pricing === 'object')
+    ? { ...DEFAULT_DYNAMIC, ...row.dynamic_pricing }
+    : { ...DEFAULT_DYNAMIC };
   normalizeSalesLength();
 
   colsInput.value = cols;
@@ -1620,6 +1938,8 @@ function applySeatsPayload(row){
   renderGrid();
   renderTierList();
   renderDiscountList();
+  renderPosterEditor();
+  renderDynamicPricingEditor();
 
   isApplyingRemote = false;
 }
@@ -1766,6 +2086,19 @@ function renderEventList(){
         <button class="btn btn-ghost btn-sm admin-only event-delete-btn" type="button">Sil</button>
       </div>
     `;
+    // Afiş varsa kartın en üstüne ekle. safeImageUrl sadece http(s) geçirir.
+    const poster = safeImageUrl(ev.poster_url);
+    if(poster){
+      const img = document.createElement('img');
+      img.className = 'event-card-poster';
+      img.src = poster;
+      img.alt = '';
+      img.loading = 'lazy';
+      // Kırık/erişilemeyen görsel kartı bozmasın diye kendini gizlesin.
+      img.addEventListener('error', () => img.remove());
+      card.prepend(img);
+    }
+
     // textContent (not innerHTML) for anything derived from user-entered
     // event names — avoids injecting HTML from an admin-typed event name.
     card.querySelector('.event-venue-badge').textContent = venueLabel;
@@ -1855,6 +2188,7 @@ function toggleNewEventDimsVisibility(){
 function openCreateEventModal(){
   newEventName.value = '';
   newEventDate.value = '';
+  newEventPoster.value = '';
   newEventVenue.value = 'sinema';
   newEventCols.value = 10;
   newEventRows.value = 8;
@@ -1891,7 +2225,8 @@ async function createEvent(){
   try {
     const { data, error } = await supabaseClient.from('events').insert({
       name, event_date: date, venue_type: vType,
-      cols: evCols, rows: evRows, seat_states: encodeSeatStates(states), tiers: DEFAULT_TIERS, status: 'active',
+      cols: evCols, rows: evRows, seat_states: encodeSeatStates(states), tiers: DEFAULT_TIERS,
+      poster_url: safeImageUrl(newEventPoster.value), status: 'active',
     }).select().single();
     if(error) throw error;
 
@@ -1926,11 +2261,16 @@ submitCreateEventBtn.addEventListener('click', createEvent);
 const DEMO_FIRST_NAMES = ['Ahmet', 'Elif', 'Mehmet', 'Zeynep', 'Can', 'Ayşe', 'Burak', 'Deniz', 'Emre', 'Selin', 'Kaan', 'Merve'];
 const DEMO_LAST_NAMES = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Aydın', 'Arslan', 'Doğan'];
 
+// Afişler Unsplash'ten, serbestçe kullanılabilen fotoğraflar.
 const DEMO_EVENTS = [
-  { name: 'Yıldızlararası — Özel Gösterim', venue: 'sinema',  cols: 12, rows: 8,  days: 5,  fill: 0.35 },
-  { name: 'Hamlet',                          venue: 'tiyatro', cols: 10, rows: 6,  days: 12, fill: 0.50 },
-  { name: 'Yaz Konseri 2026',                venue: 'konser',  cols: 16, rows: 10, days: 20, fill: 0.18 },
-  { name: 'Şehir Derbisi',                   venue: 'futbol',  cols: null, rows: null, days: 30, fill: 0.40 },
+  { name: 'Yıldızlararası — Özel Gösterim', venue: 'sinema',  cols: 12, rows: 8,  days: 5,  fill: 0.35,
+    poster: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&q=70' },
+  { name: 'Hamlet',                          venue: 'tiyatro', cols: 10, rows: 6,  days: 12, fill: 0.50,
+    poster: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=600&q=70' },
+  { name: 'Yaz Konseri 2026',                venue: 'konser',  cols: 16, rows: 10, days: 20, fill: 0.18,
+    poster: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=600&q=70' },
+  { name: 'Şehir Derbisi',                   venue: 'futbol',  cols: null, rows: null, days: 30, fill: 0.40,
+    poster: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=600&q=70' },
 ];
 
 function demoBuyerName(i){
@@ -1966,10 +2306,18 @@ async function createDemoData(){
 
         const tier = DEFAULT_TIERS[(i + e) % DEFAULT_TIERS.length];
         states[i] = ((i + e) % 2 === 0) ? 'male' : 'female';
+
+        // Satislari son 10 gune yay ki satis grafigi anlamli gorunsun.
+        const soldDaysAgo = (i * 3 + e) % 10;
+        const soldAt = new Date();
+        soldAt.setDate(soldAt.getDate() - soldDaysAgo);
+        soldAt.setHours(10 + (i % 10), (i * 7) % 60, 0, 0);
+
         sales[i] = {
           tier: tier.id, label: tier.label, price: tier.price,
           payment: (i % 3 === 0) ? 'nakit' : 'kart',
-          originalPrice: null, discountCode: null,
+          originalPrice: null, discountCode: null, surged: false,
+          soldAt: soldAt.toISOString(),
           buyerName: demoBuyerName(i + e),
           ticketCode: generateTicketCode(),
           checkedIn: i % 5 === 0,   // bir kismi kapidan giris yapmis olsun
@@ -1983,6 +2331,12 @@ async function createDemoData(){
         cols: evCols, rows: evRows,
         seat_states: encodeSeatStates(states),
         tiers: DEFAULT_TIERS,
+        poster_url: d.poster,
+        // Tiyatro etkinliginde dinamik fiyatlandirma acik olsun ki ozellik
+        // demoda gorunur olsun (doluluk %50, esik %40 -> zam aktif).
+        dynamic_pricing: e === 1
+          ? { enabled: true, threshold: 40, increase: 15 }
+          : { ...DEFAULT_DYNAMIC },
         discount_codes: e === 0
           ? [{ code: 'ERKEN20', type: 'percent', value: 20, maxUses: 50, usedCount: 3 }]
           : [],
@@ -2040,6 +2394,8 @@ async function enterEvent(id, nameHint){
   seatButtons = [];
   TICKET_TIERS = [...DEFAULT_TIERS];
   DISCOUNT_CODES = [];
+  POSTER_URL = null;
+  DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC };
 
   eventListView.hidden = true;
   eventDetailView.hidden = false;

@@ -153,6 +153,35 @@
         <button class="btn btn-primary btn-sm" id="addDiscountBtn" type="button">+ Ekle</button>
       </div>
     </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">Afiş Görseli:</span>
+      <div class="poster-row">
+        <input type="url" id="eventPosterInput" maxlength="500" placeholder="https://... (boş bırakılabilir)">
+        <button class="btn btn-primary btn-sm" id="savePosterBtn" type="button">Kaydet</button>
+      </div>
+      <img class="poster-preview" id="posterPreview" alt="" hidden>
+    </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">Dinamik Fiyatlandırma:</span>
+      <label class="dynamic-toggle">
+        <input type="checkbox" id="dynEnabled">
+        <span>Doluluk arttıkça fiyatı otomatik yükselt</span>
+      </label>
+      <div class="dynamic-row">
+        <label class="field">
+          <span>Doluluk eşiği (%)</span>
+          <input type="number" id="dynThreshold" min="1" max="100" step="1" value="80">
+        </label>
+        <label class="field">
+          <span>Fiyat artışı (%)</span>
+          <input type="number" id="dynIncrease" min="1" max="200" step="1" value="10">
+        </label>
+        <button class="btn btn-primary btn-sm" id="saveDynBtn" type="button">Kaydet</button>
+      </div>
+      <p class="dynamic-note" id="dynStatusNote"></p>
+    </div>
   </section>
 
   <section class="panel status-panel">
@@ -196,6 +225,11 @@
     </h3>
     <div class="revenue-breakdown" id="revenueBreakdown"></div>
     <div class="revenue-breakdown" id="paymentBreakdown"></div>
+
+    <div class="sales-chart" id="salesChart" hidden>
+      <h4 class="sales-chart-title">Günlük Satış</h4>
+      <div class="sales-chart-body" id="salesChartBody"></div>
+    </div>
   </section>
 
   <section class="panel grid-panel">
@@ -319,6 +353,10 @@
         <input type="date" id="newEventDate">
       </label>
       <label class="field">
+        <span>Afiş Görseli URL (opsiyonel)</span>
+        <input type="url" id="newEventPoster" maxlength="500" placeholder="https://...">
+      </label>
+      <label class="field">
         <span>Etkinlik Türü</span>
         <select id="newEventVenue">
           <option value="sinema">Sinema</option>
@@ -384,6 +422,14 @@
     <div class="checkin-form">
       <input type="text" id="checkinCodeInput" placeholder="Bilet kodu (ör. TKT-...)" maxlength="40">
       <button class="btn btn-primary" id="checkinVerifyBtn" type="button">Doğrula</button>
+      <button class="btn btn-ghost-gold" id="checkinScanBtn" type="button">Kamerayla Tara</button>
+
+      <div class="scanner-box" id="scannerBox" hidden>
+        <video id="scannerVideo" playsinline muted></video>
+        <button class="btn btn-ghost btn-sm" id="scannerStopBtn" type="button">Taramayı Durdur</button>
+      </div>
+      <p class="scanner-note" id="scannerNote" hidden></p>
+
       <div class="checkin-result" id="checkinResult" hidden></div>
     </div>
   </div>
