@@ -42,6 +42,21 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 - **Düşük veri trafiği**: bir koltuk değiştiğinde (a) etkinlik listesi kanalı, etkinlik içindeyken kapatılır — daha önce aynı satır iki ayrı kanaldan birden geliyordu; (b) liste kanalı artık tüm etkinlikleri yeniden indirmek yerine gelen payload'ı yerel diziye yamalar; (c) koltuk durumları `"empty"/"male"/"female"` yerine `"e"/"m"/"f"` saklanır (44 koltukta 353 → 177 bayt). Sonuç: koltuk başına ~2.8 kB WebSocket + 1.2 kB tam yeniden indirme yerine tek bir ~1.2 kB'lık frame
 - **Çoklu cihaz senkronizasyonu + veri azaltma**: `events` tablosu (etkinlik adı/tarih/tür/doluluk + bilet türü **fiyat listesi**) herkese açık — misafirin kendi bileti alabilmesi için fiyatları görmesi gerekiyor. `event_sales` (kimin ne aldığı: alıcı adı, ödeme yöntemi, bilet kodu) sadece Satış/Yönetici tarafından toplu okunur; misafir sadece **kendi** satın alma işlemini `purchase_seat` fonksiyonuyla yazar, başka kimsenin satış kaydını asla okumaz
 
+## Arayüz / Tema
+
+"Gece Prizması" — mor eğilimli koyu zemin, zeminde sabit duran bulanık geometrik kapsüller, vurgu olarak orkide moru. Yazı tipi Outfit; el yazısı **Pacifico** yalnızca tek bir yerde (halka açık sayfanın hero başlığında) degradeli vurgu satırı olarak kullanılıyor — arayüzün geri kalanında okunurluğu bozmasın diye hiç geçmiyor.
+
+Renkler anlamlarına göre ayrı tutuldu; hepsi düz nötr griden kaçınacak biçimde seçildi:
+
+| Rol | Renk | Not |
+|---|---|---|
+| Vurgu (buton/odak) | `#7A5AE0` orkide | Beyaz metinle 4.8:1 |
+| Satılan koltuk | `#E8A44C` kehribar | Vurgudan ayrı; mor halka mavi/gül dolgu üstünde kayboluyordu |
+| Erkek / Kadın | `#3569BE` / `#A84770` | Koltuk numarası beyaz basıldığı için degradenin **en açık** ucu da 4.5:1'i geçiyor |
+| Erişilebilir koltuk | `#2FD4C0` camgöbeği | Diğer dört durumdan ayırt edilebilir beşinci ton |
+
+Tüm metin/zemin çiftleri tarayıcıda ölçüldü, en düşük oran 4.5:1 üzerinde (gövde metni 16.6:1). Dokunmatikte filtre/mod çipleri 44px'e çıkarılıyor.
+
 ## Teknolojiler
 HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (yerel, MIT lisanslı)
 

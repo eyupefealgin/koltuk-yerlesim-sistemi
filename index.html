@@ -14,6 +14,9 @@
 </head>
 <body data-page="public">
 
+<!-- Zeminde yüzen dekoratif kapsüller — tamamen görsel, ekran okuyucudan gizli -->
+<div class="bg-decor" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+
 <!-- ============ LOGIN GATE ============ -->
 <!-- Bu, halka açık site — personel girişi burada yok, bkz. admin.html.
      Misafir için otomatik giriş yapılır (script.js), bu ekran normalde hiç
@@ -60,6 +63,21 @@
 </header>
 
 <div class="event-list-view" id="eventListView">
+
+  <!-- Hero — yalnızca halka açık sitede; personel sayfalarında yok. -->
+  <section class="hero">
+    <p class="hero-eyebrow">Koltuk Yerleşim Sistemi</p>
+    <h1 class="hero-title">
+      Yerini seç,
+      <span class="hero-script">biletin hazır</span>
+    </h1>
+    <p class="hero-sub">
+      Sinema, tiyatro, konser ve maç için koltuk planından kendi yerini seç.
+      Biletin anında QR koduyla oluşur, kapıda okutulur.
+    </p>
+    <p class="hero-meta" id="heroMeta" hidden></p>
+  </section>
+
   <div class="event-list-header">
     <h2>Etkinlikler</h2>
     <div class="event-list-header-actions">

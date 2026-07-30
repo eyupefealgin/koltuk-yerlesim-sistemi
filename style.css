@@ -1,72 +1,111 @@
 /* ═══════════════════════════════════════════════════════════
-   Koltuk Yerleşim Sistemi — Light Premium Theme
+   Koltuk Yerleşim Sistemi — "Gece Prizması" koyu tema
+   Zemin mor eğilimli siyah, vurgu orkide moru, satılan kehribar.
    ═══════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Pacifico&display=swap');
 
 :root{
-  /* Core palette — warm ivory + elegant neutrals */
-  --bg-deep: #F4F0E8;
-  --bg: #FAF8F3;
-  --bg-card: #FFFFFF;
-  --bg-card-hover: #FEFDFB;
-  --bg-elevated: #FFFFFF;
-  --surface: rgba(255, 255, 255, 0.75);
-  --surface-solid: #FFFFFF;
+  /* Zemin — mor eğilimli nötrler (düz gri "seçilmemiş" duruyor) */
+  --bg-deep: #06050C;
+  --bg: #0A0813;
+  --bg-card: #15121F;
+  --bg-card-hover: #1B1729;
+  --bg-elevated: #1B1729;
+  /* İki ayrı iş: --surface içe gömülü kontroller (input, chip, stat) için
+     soluk cam; --surface-raised ise modal/kart/panel gibi YÜKSELTİLMİŞ
+     katmanlar için neredeyse opak. Koyu zeminde soluk cam bir kartı
+     görünmez yapıyor, o yüzden ikisi karıştırılmamalı. */
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-raised: rgba(25, 21, 38, 0.93);
+  --surface-solid: #15121F;
 
-  /* Borders & glass */
-  --border: rgba(0, 0, 0, 0.07);
-  --border-hover: rgba(0, 0, 0, 0.14);
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-border: rgba(0, 0, 0, 0.06);
+  /* Kenarlıklar & cam */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.08);
 
-  /* Text */
-  --text: #2C2A25;
-  --text-secondary: #6E6960;
-  --text-muted: #A09A8F;
-  --text-bright: #1A1815;
+  /* Metin */
+  --text: #EDE9F6;
+  --text-secondary: #A79FBD;
+  --text-muted: #8A82A2;   /* #7A7291 zeminde 4.39'da kalıyordu, 5.5'e çıktı */
+  --text-bright: #FBFAFF;
 
-  /* Gold accent */
-  --gold: #B8933D;
-  --gold-light: #D4A853;
-  --gold-dim: #9A7A2E;
-  --gold-glow: rgba(184, 147, 61, 0.2);
-  --gold-subtle: rgba(184, 147, 61, 0.08);
+  /* Vurgu — orkide moru. Bileşen CSS'i tarihsel olarak --gold* isimleriyle
+     yazıldığı için (105 kullanım) isimleri değiştirmek yerine takma ad
+     verdik: --gold artık "vurgu rengi" anlamına geliyor, altın değil. */
+  /* #7A5AE0 seçildi çünkü beyaz metinle 4.8:1 veriyor; daha açık bir mor
+     (ör. #8B6FE8) buton zemini olarak 3.6:1'de kalıp AA'yı geçemiyordu. */
+  --accent: #7A5AE0;
+  --accent-light: #A98CF5;  /* yalnızca degrade/parlama; metin zemini DEĞİL */
+  --accent-dim: #6244C0;
+  --accent-rose: #F2A0C4;   /* hero degradesinin açık ucu */
+  --gold: var(--accent);
+  --gold-light: var(--accent-light);
+  --gold-dim: var(--accent-dim);
+  --gold-glow: rgba(122, 90, 224, 0.3);
+  --gold-subtle: rgba(122, 90, 224, 0.13);
 
-  /* Gender colors */
-  --male: #4A7FE5;
-  --male-glow: rgba(74, 127, 229, 0.2);
-  --male-border: #3B6DD0;
-  --male-bg: rgba(74, 127, 229, 0.1);
+  /* Cinsiyet renkleri — koltuk numarası beyaz basıldığı için dolgular
+     4.5:1'i geçecek kadar koyu. Dolgu bir degrade olduğu için EN AÇIK ucun
+     (tepe) da geçmesi gerekiyor; ölçüm o uçtan yapıldı, tabandan değil. */
+  --male: #3569BE;          /* beyazla 5.36 */
+  --male-top: #4475C2;      /* degradenin açık ucu — beyazla 4.60 */
+  --male-glow: rgba(53, 105, 190, 0.35);
+  --male-border: #4E86DC;
+  --male-bg: rgba(53, 105, 190, 0.18);
 
-  --female: #D96B8E;
-  --female-glow: rgba(217, 107, 142, 0.2);
-  --female-border: #C45A7D;
-  --female-bg: rgba(217, 107, 142, 0.1);
+  --female: #A84770;        /* beyazla 5.3 */
+  --female-top: #BA527D;    /* degradenin açık ucu — beyazla 4.57 */
+  --female-glow: rgba(168, 71, 112, 0.35);
+  --female-border: #D8759F;
+  --female-bg: rgba(168, 71, 112, 0.18);
 
-  /* Status */
-  --empty-bg: rgba(0, 0, 0, 0.02);
-  --empty-border: rgba(0, 0, 0, 0.08);
-  --sold: var(--gold);
-  --success: #3DA67A;
-  --danger: #D95050;
+  /* Durum — satılan kehribar: vurgu morundan ayrı bir iş yapıyor,
+     mavi/gül koltuklarla karışmaması için farklı bir ton. */
+  --sold: #E8A44C;
+  --sold-light: #F6BC6E;
+  --sold-glow: rgba(232, 164, 76, 0.3);
+  --access: #2FD4C0;         /* erişilebilir koltuk rozeti */
+  --empty-bg: rgba(255, 255, 255, 0.04);
+  --empty-border: rgba(255, 255, 255, 0.14);
+  --seat-bg: rgba(255, 255, 255, 0.05);
+  --success: #3ECF8E;
+  --danger: #E2565A;
+  --warn: #E0A44A;
 
-  /* Radii */
+  /* Koyu zeminde yüzey tonları (eskiden rgba(0,0,0,0.0x) idi) */
+  --tint: rgba(255, 255, 255, 0.035);
+  --tint-2: rgba(255, 255, 255, 0.06);
+  --tint-3: rgba(255, 255, 255, 0.1);
+
+  /* Üst kenar parlaması (specular) — koyuda da doğru, sadece daha kısık */
+  --hi: rgba(255, 255, 255, 0.1);
+  --hi-soft: rgba(255, 255, 255, 0.22);
+
+  /* Gölge katmanları — koyu zeminde okunması için daha derin */
+  --sh-1: rgba(0, 0, 0, 0.3);
+  --sh-2: rgba(0, 0, 0, 0.45);
+  --sh-3: rgba(0, 0, 0, 0.6);
+
+  /* Yarıçaplar */
   --radius-xl: 24px;
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
   --radius-xs: 6px;
 
-  /* Shadows — warm tinted */
-  --shadow-sm: 0 2px 8px rgba(160, 140, 100, 0.08);
-  --shadow-md: 0 8px 28px rgba(160, 140, 100, 0.1);
-  --shadow-lg: 0 20px 50px rgba(160, 140, 100, 0.14);
-  --shadow-gold: 0 4px 20px rgba(184, 147, 61, 0.15);
-  --shadow-glow: 0 0 40px rgba(184, 147, 61, 0.08);
+  /* Gölgeler */
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 10px 32px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --shadow-gold: 0 6px 24px rgba(122, 90, 224, 0.38);
+  --shadow-glow: 0 0 50px rgba(122, 90, 224, 0.2);
 
-  /* Font */
+  /* Tipografi */
   --font: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-script: 'Pacifico', 'Segoe Script', cursive;
 }
 
 /* ===== Reset & Base ===== */
@@ -80,10 +119,63 @@ body{
   min-height: 100vh;
   overflow-x: hidden;
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -5%, rgba(184, 147, 61, 0.07) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 40% at 85% 100%, rgba(74, 127, 229, 0.04) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(217, 107, 142, 0.02) 0%, transparent 70%);
+    radial-gradient(ellipse 70% 45% at 15% -5%, rgba(122, 90, 224, 0.16) 0%, transparent 70%),
+    radial-gradient(ellipse 55% 40% at 88% 8%, rgba(232, 164, 76, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 45% at 80% 100%, rgba(242, 160, 196, 0.07) 0%, transparent 70%);
+  background-attachment: fixed;
 }
+
+/* ===== Zeminde yüzen geometrik kapsüller =====
+   Sayfa boyunca sabit duran, ağır bulanıklaştırılmış kapsül şekilleri.
+   Dekoratif oldukları için aria-hidden bir katmanda değil, ::before/::after
+   ile üretiliyorlar — DOM'a boş div eklemeye gerek yok. */
+.bg-decor{
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-decor span{
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  filter: blur(42px);
+  opacity: .5;
+}
+.bg-decor span:nth-child(1){
+  width: 30vw; height: 12vw; min-width: 260px; min-height: 110px;
+  top: 6%; left: -6%;
+  background: linear-gradient(120deg, var(--accent), transparent 75%);
+  transform: rotate(-24deg);
+}
+.bg-decor span:nth-child(2){
+  width: 22vw; height: 9vw; min-width: 200px; min-height: 90px;
+  top: 24%; right: -4%;
+  background: linear-gradient(120deg, var(--sold), transparent 75%);
+  transform: rotate(18deg);
+  opacity: .32;
+}
+.bg-decor span:nth-child(3){
+  width: 26vw; height: 10vw; min-width: 220px; min-height: 100px;
+  bottom: 12%; left: 12%;
+  background: linear-gradient(120deg, var(--accent-rose), transparent 78%);
+  transform: rotate(-12deg);
+  opacity: .3;
+}
+.bg-decor span:nth-child(4){
+  width: 18vw; height: 18vw; min-width: 180px; min-height: 180px;
+  bottom: -6%; right: 16%;
+  background: radial-gradient(circle, var(--accent-dim), transparent 70%);
+  opacity: .35;
+}
+/* Süslemeler ekranı yavaşlatmasın diye hareket etmiyorlar; yine de
+   azaltılmış hareket tercihinde bulanıklığı da düşürüyoruz (GPU yükü). */
+@media (prefers-reduced-motion: reduce){
+  .bg-decor span{ filter: blur(30px); }
+}
+/* İçerik süslemelerin üstünde kalmalı */
+.app-root, .login-gate{ position: relative; z-index: 1; }
 
 button{ font-family: inherit; cursor: pointer; border: none; background: none; }
 input{ font-family: inherit; }
@@ -106,9 +198,9 @@ input{ font-family: inherit; }
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-@keyframes pulse-gold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(184, 147, 61, 0.3); }
-  50%      { box-shadow: 0 0 0 8px rgba(184, 147, 61, 0); }
+@keyframes pulse-sold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 164, 76, 0.35); }
+  50%      { box-shadow: 0 0 0 8px rgba(232, 164, 76, 0); }
 }
 @keyframes float {
   0%, 100% { transform: translateY(0); }
@@ -127,7 +219,7 @@ input{ font-family: inherit; }
   padding: 20px;
   z-index: 100;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 30%, rgba(184, 147, 61, 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 80% 60% at 50% 30%, rgba(139, 111, 232, 0.06) 0%, transparent 70%),
     radial-gradient(ellipse 60% 50% at 30% 80%, rgba(74, 127, 229, 0.04) 0%, transparent 70%),
     var(--bg);
 }
@@ -136,7 +228,7 @@ input{ font-family: inherit; }
 .login-card{
   width: 100%;
   max-width: 420px;
-  background: var(--surface);
+  background: var(--surface-raised);
   backdrop-filter: blur(40px) saturate(1.6);
   -webkit-backdrop-filter: blur(40px) saturate(1.6);
   border: 1px solid var(--glass-border);
@@ -164,14 +256,14 @@ input{ font-family: inherit; }
   height: 68px;
   margin: 0 auto 22px;
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(184, 147, 61, 0.08), rgba(184, 147, 61, 0.18));
-  border: 1px solid rgba(184, 147, 61, 0.2);
+  background: linear-gradient(135deg, rgba(139, 111, 232, 0.08), rgba(139, 111, 232, 0.18));
+  border: 1px solid rgba(139, 111, 232, 0.2);
   color: var(--gold);
   display: flex;
   align-items: center;
   justify-content: center;
   animation: float 4s ease-in-out infinite;
-  box-shadow: 0 8px 24px rgba(184, 147, 61, 0.1);
+  box-shadow: 0 8px 24px rgba(139, 111, 232, 0.1);
 }
 
 .login-card h1{
@@ -206,7 +298,7 @@ input{ font-family: inherit; }
   padding: 12px 16px;
   font-size: .95rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface);
   backdrop-filter: blur(10px);
   min-height: 48px;
   transition: border-color .2s ease, box-shadow .2s ease;
@@ -214,7 +306,7 @@ input{ font-family: inherit; }
 .login-password-row input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .login-error{
   color: var(--danger);
@@ -247,7 +339,7 @@ input{ font-family: inherit; }
 }
 .btn-primary:hover, .btn-gold:hover{
   background: linear-gradient(135deg, var(--gold-dim), var(--gold));
-  box-shadow: 0 8px 30px rgba(184, 147, 61, 0.3);
+  box-shadow: 0 8px 30px rgba(139, 111, 232, 0.3);
   transform: translateY(-2px);
 }
 .btn-primary:active, .btn-gold:active{
@@ -256,26 +348,26 @@ input{ font-family: inherit; }
 
 .btn-ghost-gold{
   background: var(--gold-subtle);
-  border: 1px solid rgba(184, 147, 61, 0.2);
+  border: 1px solid rgba(139, 111, 232, 0.2);
   color: var(--gold-dim);
 }
 .btn-ghost-gold:hover{
-  background: rgba(184, 147, 61, 0.12);
+  background: rgba(139, 111, 232, 0.12);
   border-color: var(--gold);
   color: var(--gold-dim);
-  box-shadow: 0 0 20px rgba(184, 147, 61, 0.08);
+  box-shadow: 0 0 20px rgba(139, 111, 232, 0.08);
   transform: translateY(-1px);
 }
 
 .btn-ghost{
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--tint);
   border: 1px solid var(--border);
   color: var(--text-secondary);
 }
 .btn-ghost:hover{
   border-color: var(--border-hover);
   color: var(--text);
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--tint-2);
 }
 
 .btn-sm{
@@ -328,10 +420,10 @@ body[data-page="public"] #logoutBtn{ display: none; }
   letter-spacing: 1px;
   color: var(--gold-dim);
   background: var(--gold-subtle);
-  border: 1px solid rgba(184, 147, 61, 0.2);
+  border: 1px solid rgba(139, 111, 232, 0.2);
   padding: 7px 16px;
   border-radius: 999px;
-  box-shadow: 0 0 12px rgba(184, 147, 61, 0.06);
+  box-shadow: 0 0 12px rgba(139, 111, 232, 0.06);
 }
 
 .brand{
@@ -345,7 +437,7 @@ body[data-page="public"] #logoutBtn{ display: none; }
 .brand-icon{
   color: var(--gold);
   display: inline-flex;
-  filter: drop-shadow(0 0 8px rgba(184, 147, 61, 0.3));
+  filter: drop-shadow(0 0 8px rgba(139, 111, 232, 0.3));
 }
 
 /* Role-based visibility. [data-role] is set on both #appRoot AND <body> —
@@ -372,7 +464,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 
 .panel{
-  background: var(--surface);
+  background: var(--surface-raised);
   backdrop-filter: blur(20px) saturate(1.3);
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--glass-border);
@@ -395,7 +487,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   position: absolute;
   top: 0; left: 15%; right: 15%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(184, 147, 61, 0.25), transparent);
+  background: linear-gradient(90deg, transparent, rgba(139, 111, 232, 0.25), transparent);
   border-radius: 0 0 2px 2px;
 }
 
@@ -429,13 +521,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-size: .95rem;
   color: var(--text);
   min-height: 48px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
 }
 .field input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .field-static strong{
   font-size: 1.6rem;
@@ -449,7 +541,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .presets{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .preset-chip{
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--tint);
   color: var(--text-secondary);
   padding: 9px 18px;
   border-radius: 999px;
@@ -462,7 +554,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-color: var(--gold);
   color: var(--gold-dim);
   background: var(--gold-subtle);
-  box-shadow: 0 0 12px rgba(184, 147, 61, 0.08);
+  box-shadow: 0 0 12px rgba(139, 111, 232, 0.08);
   transform: translateY(-1px);
 }
 .preset-chip.is-active{
@@ -503,7 +595,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-radius: var(--radius-sm);
   transition: background .2s ease;
 }
-.tier-row:hover{ background: rgba(0, 0, 0, 0.015); }
+.tier-row:hover{ background: var(--tint); }
 
 .tier-name-input, .tier-price-input{
   border: 1px solid var(--border);
@@ -511,7 +603,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 14px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 44px;
   transition: border-color .2s ease, box-shadow .2s ease;
 }
@@ -520,7 +612,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .tier-name-input:focus, .tier-price-input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 
 .tier-del-btn{
@@ -528,7 +620,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   width: 38px;
   height: 38px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--tint);
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   font-size: 1.15rem;
@@ -552,7 +644,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.015);
+  background: var(--tint);
   font-size: .88rem;
 }
 .discount-row-item .discount-code-label{ font-weight: 700; color: var(--text-bright); flex: 1 1 auto; }
@@ -564,13 +656,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 14px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 44px;
 }
 .discount-add-row input:focus, .discount-add-row select:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .discount-add-row input[type="text"]{ flex: 1 1 140px; }
 .discount-add-row input[type="number"]{ width: 110px; flex: 0 0 auto; }
@@ -582,7 +674,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 14px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 44px;
   transition: border-color .2s ease, box-shadow .2s ease;
 }
@@ -624,7 +716,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   align-items: center;
   gap: 8px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface);
   color: var(--text-secondary);
   padding: 8px 16px;
   border-radius: 999px;
@@ -679,17 +771,17 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 .capacity-bar-bg {
   height: 8px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--tint-2);
   border-radius: 999px;
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 2px var(--sh-1);
 }
 .capacity-bar {
   height: 100%;
   width: 0%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--gold), var(--gold-light));
-  box-shadow: 0 0 8px rgba(184, 147, 61, 0.3);
+  box-shadow: 0 0 8px rgba(139, 111, 232, 0.3);
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -724,14 +816,14 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   align-items: center;
   min-width: 72px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: all .25s ease;
 }
 .stat:hover{
   border-color: var(--border-hover);
-  background: #fff;
+  background: var(--tint-2);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -776,12 +868,12 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   transition: background .15s ease;
 }
 .revenue-row:hover{
-  background: rgba(0, 0, 0, 0.015);
+  background: var(--tint);
 }
 .revenue-row span:first-child{ color: var(--text); font-weight: 500; }
 .revenue-total{
   border-bottom: none;
-  border-top: 2px solid rgba(184, 147, 61, 0.25);
+  border-top: 2px solid rgba(139, 111, 232, 0.25);
   margin-top: 8px;
   padding-top: 14px;
   font-weight: 700;
@@ -808,7 +900,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   margin: 0 auto 30px;
   max-width: 450px;
   border-radius: 0 0 120px 120px / 0 0 35px 35px;
-  background: linear-gradient(180deg, rgba(184, 147, 61, 0.15), transparent);
+  background: linear-gradient(180deg, rgba(139, 111, 232, 0.15), transparent);
   border-top: 2px solid var(--gold);
   display: flex;
   align-items: flex-start;
@@ -818,7 +910,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-weight: 700;
   letter-spacing: 6px;
   padding-top: 8px;
-  box-shadow: 0 15px 40px -8px rgba(184, 147, 61, 0.12);
+  box-shadow: 0 15px 40px -8px rgba(139, 111, 232, 0.12);
   position: relative;
 }
 .screen-curve::after{
@@ -850,7 +942,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   height: 10px;
   max-width: 340px;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.06), transparent);
+  background: linear-gradient(90deg, transparent, var(--tint-2), transparent);
   border-top: none;
   box-shadow: none;
   padding-top: 20px;
@@ -879,6 +971,66 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 32px 28px 80px;
 }
 .event-list-view[hidden]{ display: none; }
+
+/* ===== HERO (yalnızca halka açık site) ===== */
+.hero{
+  padding: 26px 0 40px;
+  max-width: 46ch;   /* satır uzunluğunu okunur tut */
+}
+.hero-eyebrow{
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+  margin-bottom: 14px;
+}
+.hero-title{
+  font-size: clamp(2.1rem, 6vw, 3.9rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  color: var(--text-bright);
+  margin-bottom: 18px;
+}
+/* El yazısı vurgu: tek bir yerde kullanılıyor — hero'nun ikinci satırı.
+   Arayüzün başka hiçbir yerinde yok, okunurluğu bozmasın. */
+.hero-script{
+  display: block;
+  font-family: var(--font-script);
+  font-weight: 400;
+  font-size: 1.06em;
+  line-height: 1.28;
+  letter-spacing: 0;
+  padding-right: .12em;   /* Pacifico'nun sağa taşan kuyruğu kırpılmasın */
+  background: linear-gradient(100deg, var(--accent-rose) 0%, var(--accent-light) 52%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+/* background-clip:text desteklenmezse metin görünmez kalırdı — geri düş. */
+@supports not ((-webkit-background-clip: text) or (background-clip: text)){
+  .hero-script{
+    -webkit-text-fill-color: currentColor;
+    color: var(--accent-light);
+  }
+}
+.hero-sub{
+  font-size: 1.02rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.hero-meta{
+  margin-top: 16px;
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hero-meta[hidden]{ display: none; }
+
 .event-list-header{
   display: flex;
   align-items: center;
@@ -920,14 +1072,14 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 9px 12px;
   font-size: .86rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 40px;
 }
 .event-filter-bar select:focus,
 .event-filter-bar input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .event-filter-date, .event-filter-price{
   display: flex;
@@ -950,7 +1102,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   gap: 20px;
 }
 .event-card{
-  background: var(--surface);
+  background: var(--surface-raised);
   backdrop-filter: blur(20px) saturate(1.3);
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--glass-border);
@@ -984,7 +1136,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   color: var(--success);
 }
 .event-status-badge[data-status="archived"]{
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--tint-2);
   color: var(--text-muted);
 }
 .event-card-name{ font-size: 1.1rem; font-weight: 700; color: var(--text-bright); }
@@ -1010,13 +1162,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-size: .95rem;
   color: var(--text);
   min-height: 48px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
 }
 .field select:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 
 /* ═══════════════════════════════════════
@@ -1033,7 +1185,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .bulk-mode-toggle{ display: flex; gap: 6px; }
 .mode-chip{
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--tint);
   color: var(--text-muted);
   padding: 9px 18px;
   border-radius: 999px;
@@ -1076,7 +1228,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 16px 10px 38px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   min-height: 40px;
   box-shadow: var(--shadow-sm);
@@ -1084,7 +1236,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .search-box input:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
   outline: none;
 }
 .search-icon {
@@ -1124,7 +1276,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 
 .seat-grid.search-active .seat.search-match {
   transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 0 16px var(--gold-glow), 0 4px 12px rgba(184, 147, 61, 0.15) !important;
+  box-shadow: 0 0 16px var(--gold-glow), 0 4px 12px rgba(139, 111, 232, 0.15) !important;
   border-color: var(--gold) !important;
 }
 
@@ -1144,8 +1296,8 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   text-align: center;
 }
 .grid-scroll::-webkit-scrollbar{ height: 6px; }
-.grid-scroll::-webkit-scrollbar-track{ background: rgba(0,0,0,0.03); border-radius: 3px; }
-.grid-scroll::-webkit-scrollbar-thumb{ background: rgba(184, 147, 61, 0.25); border-radius: 3px; }
+.grid-scroll::-webkit-scrollbar-track{ background: var(--tint); border-radius: 3px; }
+.grid-scroll::-webkit-scrollbar-thumb{ background: rgba(139, 111, 232, 0.25); border-radius: 3px; }
 
 .seat-grid{
   display: inline-grid;
@@ -1160,7 +1312,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   height: 50px;
   border-radius: 12px 12px 6px 6px;
   border: 1.5px solid var(--empty-border);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--seat-bg);
   color: var(--text-secondary);
   font-size: .78rem;
   font-weight: 600;
@@ -1171,72 +1323,74 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   flex-shrink: 0;
   /* 3D depth effect — light version */
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.9),
-    0 3px 8px rgba(0, 0, 0, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    0 1px 0 var(--hi),
+    0 3px 8px var(--sh-2),
+    0 1px 2px var(--sh-1),
+    inset 0 1px 0 var(--hi);
 }
 .seat:hover{
   transform: translateY(-4px) scale(1.05);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.9),
-    0 12px 24px rgba(0, 0, 0, 0.1),
-    0 4px 8px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 1px 0 var(--hi),
+    0 12px 24px var(--sh-3),
+    0 4px 8px var(--sh-2),
+    inset 0 1px 0 var(--hi);
   z-index: 2;
-  background: #fff;
+  background: var(--tint-2);
 }
 
 /* Male seat */
 .seat.male{
-  background: linear-gradient(180deg, #5B8DEF 0%, var(--male) 100%);
+  background: linear-gradient(180deg, var(--male-top) 0%, var(--male) 100%);
   border-color: var(--male-border);
   color: #fff;
   box-shadow:
     0 1px 0 rgba(74, 127, 229, 0.3),
     0 4px 14px var(--male-glow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    inset 0 1px 0 var(--hi-soft);
 }
 .seat.male:hover{
   box-shadow:
     0 1px 0 rgba(74, 127, 229, 0.4),
     0 12px 28px rgba(74, 127, 229, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    inset 0 1px 0 var(--hi-soft);
 }
 
 /* Female seat */
 .seat.female{
-  background: linear-gradient(180deg, #E87DA1 0%, var(--female) 100%);
+  background: linear-gradient(180deg, var(--female-top) 0%, var(--female) 100%);
   border-color: var(--female-border);
   color: #fff;
   box-shadow:
     0 1px 0 rgba(217, 107, 142, 0.3),
     0 4px 14px var(--female-glow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    inset 0 1px 0 var(--hi-soft);
 }
 .seat.female:hover{
   box-shadow:
     0 1px 0 rgba(217, 107, 142, 0.4),
     0 12px 28px rgba(217, 107, 142, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    inset 0 1px 0 var(--hi-soft);
 }
 
-/* Sold badge */
+/* Satılan koltuk — kehribar halka. Cinsiyet dolgusunun ÜZERİNE binen ayrı
+   bir katman olduğu için vurgu morundan farklı bir ton kullanıyor; yoksa
+   mor halka mavi/gül dolgu üstünde kayboluyordu. */
 .seat.sold{
   box-shadow:
-    0 0 0 2.5px var(--gold) inset,
-    0 4px 12px rgba(184, 147, 61, 0.15);
+    0 0 0 2.5px var(--sold) inset,
+    0 4px 12px var(--sold-glow);
 }
 .seat.sold:hover{
   box-shadow:
-    0 0 0 2.5px var(--gold) inset,
-    0 12px 28px rgba(184, 147, 61, 0.2);
+    0 0 0 2.5px var(--sold) inset,
+    0 12px 28px var(--sold-glow);
 }
 
 .seat.bulk-selected{
   box-shadow:
-    0 0 0 2.5px var(--male) inset,
-    0 0 0 6px rgba(74, 127, 229, 0.12);
+    0 0 0 2.5px var(--male-border) inset,
+    0 0 0 6px var(--male-bg);
   transform: translateY(-3px) scale(1.05);
 }
 
@@ -1249,9 +1403,12 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
-  border: 2px solid #fff;
-  color: #fff;
+  background: linear-gradient(135deg, var(--sold), var(--sold-light));
+  /* Koyu halka: rozeti hem koltuktan hem ızgara boşluğundan ayırıyor.
+     Beyaz halka 60 koltukta gürültü yapıyordu. */
+  border: 2px solid var(--bg-card);
+  /* Kehribar üstünde beyaz metin 2.0:1 — koyu glif okunur olan tek seçenek. */
+  color: #2B1A00;
   font-size: 10px;
   font-weight: 800;
   display: flex;
@@ -1259,8 +1416,8 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   justify-content: center;
   line-height: 1;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgba(184, 147, 61, 0.25);
-  animation: pulse-gold 2s ease-in-out infinite;
+  box-shadow: 0 2px 8px var(--sold-glow);
+  animation: pulse-sold 2s ease-in-out infinite;
 }
 
 .accessible-badge{
@@ -1270,29 +1427,29 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #2f6fed;
-  border: 2px solid #fff;
-  color: #fff;
+  background: var(--access);
+  border: 2px solid var(--bg-card);
+  color: #04322D;   /* camgöbeği üstünde beyaz okunmuyor */
   font-size: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
   pointer-events: none;
-  box-shadow: 0 2px 6px rgba(47, 111, 237, 0.35);
+  box-shadow: 0 2px 6px rgba(47, 212, 192, 0.4);
 }
-.seat.accessible{ outline: 2px solid rgba(47, 111, 237, 0.55); outline-offset: 1px; }
-.mode-chip.admin-only.is-active{ background: #2f6fed; border-color: #2f6fed; color: #fff; }
+.seat.accessible{ outline: 2px solid rgba(47, 212, 192, 0.6); outline-offset: 1px; }
+.mode-chip.admin-only.is-active{ background: var(--access); border-color: var(--access); color: #04322D; }
 
 .seat-grid.guest-mode .seat{ cursor: default; }
 .seat-grid.guest-mode .seat:hover{
   transform: none;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.9),
-    0 3px 8px rgba(0, 0, 0, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.8);
+    0 1px 0 var(--hi),
+    0 3px 8px var(--sh-2),
+    0 1px 2px var(--sh-1),
+    inset 0 1px 0 var(--hi);
+  background: var(--seat-bg);
 }
 
 /* ═══════════════════════════════════════
@@ -1312,7 +1469,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border: 3px solid rgba(255, 255, 255, 0.8);
   border-radius: 16px;
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.06),
+    inset 0 0 0 1px var(--sh-2),
     0 10px 30px rgba(73, 146, 58, 0.2),
     0 0 60px rgba(107, 191, 85, 0.06);
 }
@@ -1321,7 +1478,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   position: absolute;
   top: 0; bottom: 0; left: 50%;
   width: 2px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface);
   transform: translateX(-50%);
 }
 .stadium-field::after{
@@ -1368,13 +1525,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   transform: translateX(-50%);
   background: var(--surface-solid);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(184, 147, 61, 0.3);
+  border: 1px solid rgba(139, 111, 232, 0.3);
   color: var(--text);
   padding: 14px 24px;
   border-radius: var(--radius-md);
   font-size: .88rem;
   font-weight: 500;
-  box-shadow: var(--shadow-lg), 0 0 20px rgba(184, 147, 61, 0.06);
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(139, 111, 232, 0.06);
   z-index: 30;
   animation: toast-in .3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1390,7 +1547,9 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .modal-overlay{
   position: fixed;
   inset: 0;
-  background: rgba(44, 42, 37, 0.35);
+  /* Koyu temada derin bir perde şart: eski açık tema örtüsü (0.35 sıcak gri)
+     modalı arkasındaki içerikten ayıramıyordu. */
+  background: rgba(4, 3, 8, 0.72);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -1410,7 +1569,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   position: relative;
   width: 100%;
   max-width: 400px;
-  background: var(--surface);
+  background: var(--surface-raised);
   backdrop-filter: blur(40px) saturate(1.6);
   -webkit-backdrop-filter: blur(40px) saturate(1.6);
   border: 1px solid var(--glass-border);
@@ -1433,7 +1592,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .modal-close{
   position: absolute;
   top: 16px; right: 16px;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--tint-2);
   color: var(--text-secondary);
   width: 34px; height: 34px;
   border-radius: 999px;
@@ -1441,7 +1600,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   transition: all .2s ease;
 }
 .modal-close:hover{
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--tint-3);
   color: var(--text);
   transform: rotate(90deg);
 }
@@ -1472,7 +1631,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .choice-btn{
   flex: 1 1 120px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--surface);
   color: var(--text);
   padding: 16px 18px;
   border-radius: var(--radius-md);
@@ -1486,7 +1645,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   color: var(--gold-dim);
   background: var(--gold-subtle);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(184, 147, 61, 0.1);
+  box-shadow: 0 8px 20px rgba(139, 111, 232, 0.1);
 }
 
 .choice-btn.choice-male:hover{
@@ -1521,14 +1680,14 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-size: .95rem;
   color: var(--text);
   min-height: 48px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   margin-bottom: 10px;
   transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
 }
 .buyer-name-input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .buyer-note{ font-size: .78rem; color: var(--text-muted); margin: 0 0 16px; min-height: 1em; }
 .hold-countdown{
@@ -1551,7 +1710,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-size: .9rem;
   color: var(--text);
   min-height: 44px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
 }
 .discount-note{ font-size: .8rem; margin: 0 0 12px; }
 .discount-note[hidden]{ display: none; }
@@ -1633,12 +1792,12 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   font-size: .95rem;
   color: var(--text);
   min-height: 48px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
 }
 .checkin-form input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .checkin-result{
   border-radius: var(--radius-sm);
@@ -1679,7 +1838,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   gap: 8px;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--tint);
   font-size: .82rem;
   cursor: pointer;
   transition: background .2s ease;
@@ -1708,13 +1867,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 14px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 44px;
 }
 .poster-row input:focus{
   border-color: var(--gold);
   box-shadow: 0 0 0 3px var(--gold-glow);
-  background: #fff;
+  background: var(--tint-2);
 }
 .poster-preview{
   margin-top: 12px;
@@ -1748,7 +1907,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   padding: 10px 14px;
   font-size: .9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface);
   min-height: 44px;
 }
 .dynamic-note{ font-size: .82rem; color: var(--text-secondary); margin: 12px 0 0; }
@@ -1777,7 +1936,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .chart-track{
   flex: 1 1 auto;
   height: 20px;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--tint-2);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -1822,6 +1981,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   .topbar-actions .btn{ flex: 1 1 auto; }
   .login-card{ padding: 32px 24px; }
   .panel{ padding: 22px 20px; }
+
+  /* Dokunmatikte 44px'lik hedef: filtre/mod çipleri masaüstünde 36px'ti,
+     parmakla isabet ettirmek için mobilde büyütülüyor. */
+  .filter-chip, .mode-chip{ min-height: 44px; padding-inline: 16px; }
+
+  /* Hero mobilde biraz daha derli toplu dursun */
+  .hero{ padding: 18px 0 30px; }
 
   /* Etkinlik listesi */
   .event-list-view{ padding: 22px 16px 60px; }
@@ -1874,9 +2040,9 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 ::-webkit-scrollbar{ width: 8px; }
 ::-webkit-scrollbar-track{ background: var(--bg); }
 ::-webkit-scrollbar-thumb{
-  background: rgba(184, 147, 61, 0.2);
+  background: rgba(139, 111, 232, 0.2);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover{
-  background: rgba(184, 147, 61, 0.35);
+  background: rgba(139, 111, 232, 0.35);
 }

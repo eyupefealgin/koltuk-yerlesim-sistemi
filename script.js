@@ -2203,6 +2203,24 @@ function eventMatchesFilters(ev){
   return true;
 }
 
+// Hero'daki canlı özet — uydurma pazarlama sayısı değil, listedeki gerçek
+// etkinliklerden hesaplanıyor. Hero yalnızca index.html'de olduğu için
+// personel sayfalarında bu element yok, sessizce atlanıyor.
+function renderHeroMeta(list){
+  const el = document.getElementById('heroMeta');
+  if(!el) return;
+
+  if(!list.length){ el.hidden = true; return; }
+
+  const bosKoltuk = list.reduce((sum, ev) => {
+    const { total, filled } = computeOccupancy(ev);
+    return sum + Math.max(0, total - filled);
+  }, 0);
+
+  el.textContent = `${list.length} etkinlik · ${bosKoltuk} boş koltuk`;
+  el.hidden = false;
+}
+
 function renderEventList(){
   eventGridEl.innerHTML = '';
   eventEmptyHint.hidden = events.length > 0;
@@ -2214,6 +2232,7 @@ function renderEventList(){
 
   const filtered = sorted.filter(eventMatchesFilters);
   eventFilterEmptyHint.hidden = !(events.length > 0 && filtered.length === 0);
+  renderHeroMeta(filtered);
 
   filtered.forEach(ev => {
     const { total, pct } = computeOccupancy(ev);
