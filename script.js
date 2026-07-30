@@ -14,6 +14,7 @@ let pushTimerLayout = null;
 let pushTimerVenueType = null;
 let pushTimerSalesData = null;
 let pushTimerTiers = null;
+let pushTimerAccessibleSeats = null;
 
 function clearPushTimers(){
   clearTimeout(pushTimerSeatStates);
@@ -21,6 +22,7 @@ function clearPushTimers(){
   clearTimeout(pushTimerVenueType);
   clearTimeout(pushTimerSalesData);
   clearTimeout(pushTimerTiers);
+  clearTimeout(pushTimerAccessibleSeats);
 }
 
 // Ticket tiers are per-event (stored in events.tiers — public, since a price
@@ -187,6 +189,7 @@ const paymentBreakdownEl = document.getElementById('paymentBreakdown');
 // Bulk selection toolbar
 const singleModeBtn = document.getElementById('singleModeBtn');
 const bulkModeBtn = document.getElementById('bulkModeBtn');
+const accessModeBtn = document.getElementById('accessModeBtn');
 const startBulkSaleBtn = document.getElementById('startBulkSaleBtn');
 const bulkCountEl = document.getElementById('bulkCount');
 
@@ -274,6 +277,9 @@ let currentFilter = 'all';
 let bulkMode = false;
 let bulkSelected = new Set();
 
+let accessMode = false;        // koltuk tıklamaları erişilebilirlik işaretlemeye gidiyor
+let ACCESSIBLE_SEATS = new Set(); // erişilebilir olarak işaretli koltuk index'leri (events.accessible_seats)
+
 let modalSeatIdx = null;      // single-seat flow
 let modalSeatIndices = null;  // bulk flow (array of indices)
 let modalGender = null;
@@ -290,6 +296,10 @@ let DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC }; // events.dynamic_pricing
 
 function canEdit(){
   return currentRole === 'admin' || currentRole === 'sales';
+}
+
+function isAdmin(){
+  return currentRole === 'admin';
 }
 
 // Misafir artık kendi koltuğunu kendi satın alabiliyor (staff'ın toplu
@@ -352,6 +362,7 @@ function normalizeSalesLength(){
 function generateGrid(preserve){
   clampDims();
   const total = cols * rows;
+  let accessibleChanged = false;
 
   if(preserve && seatStates.length){
     const nextStates = new Array(total).fill('empty');
@@ -362,10 +373,16 @@ function generateGrid(preserve){
     }
     seatStates = nextStates;
     seatSales = nextSales;
+    accessibleChanged = pruneAccessibleSeats(total);
   } else {
     seatStates = new Array(total).fill('empty');
     seatSales = new Array(total).fill(null);
+    // Duzen sifirlaniyorsa eski isaretler de anlamsiz kalir.
+    accessibleChanged = ACCESSIBLE_SEATS.size > 0;
+    ACCESSIBLE_SEATS.clear();
   }
+
+  if(accessibleChanged) pushAccessibleSeats();
 
   renderGrid();
   pushLayout();     // cols/rows/seat_states → events table
@@ -460,6 +477,13 @@ function renderStadiumGrid(){
 }
 
 function handleSeatClick(idx, btn){
+  // Erişilebilirlik işaretleme sadece yönetici özelliği; koltuğun dolu/boş
+  // durumundan bağımsız çalışır (satılmış bir koltuk da işaretlenebilir).
+  if(isAdmin() && accessMode){
+    toggleAccessibleSeat(idx, btn);
+    return;
+  }
+
   if(!canPurchase()) return;
 
   // Toplu seçim sadece personel özelliği — misafir kendi biletini tek tek
@@ -507,6 +531,34 @@ function setBulkMode(on){
 singleModeBtn.addEventListener('click', () => setBulkMode(false));
 bulkModeBtn.addEventListener('click', () => setBulkMode(true));
 
+function setAccessMode(on){
+  accessMode = on;
+  accessModeBtn?.classList.toggle('is-active', on);
+  gridHint.textContent = on
+    ? 'Erişilebilir olacak koltuklara tıkla — tekrar tıklayınca kaldırılır. Bitirince modu kapat.'
+    : 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç';
+  if(on) setBulkMode(false);
+}
+
+accessModeBtn?.addEventListener('click', () => setAccessMode(!accessMode));
+
+function toggleAccessibleSeat(idx, btn){
+  if(ACCESSIBLE_SEATS.has(idx)) ACCESSIBLE_SEATS.delete(idx);
+  else ACCESSIBLE_SEATS.add(idx);
+  renderSeatVisual(btn, idx);
+  pushAccessibleSeats();
+}
+
+// Katman/mekan türü değişince koltuk sayısı değişebilir — artık var olmayan
+// indeksleri işaretli listeden temizler. Değişiklik varsa true döner.
+function pruneAccessibleSeats(total){
+  let changed = false;
+  ACCESSIBLE_SEATS.forEach(i => {
+    if(i >= total){ ACCESSIBLE_SEATS.delete(i); changed = true; }
+  });
+  return changed;
+}
+
 startBulkSaleBtn.addEventListener('click', () => {
   if(bulkSelected.size === 0) return;
   modalSeatIndices = [...bulkSelected];
@@ -553,6 +605,7 @@ function seatAriaLabel(idx){
   })();
   let label = `${name}, durum: ${labelFor(state)}`;
   if(sale) label += `, satıldı: ${sale.label} ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
+  if(ACCESSIBLE_SEATS.has(idx)) label += ', erişilebilir koltuk';
   return label;
 }
 
@@ -565,13 +618,22 @@ function renderSeatVisual(btn, idx){
   // render — finalizeSeatSale()/modalClearSeatBtn call this directly after a
   // sale, which used to wipe className back to just "seat" + state, losing
   // the stadium sizing class.
-  btn.className = ['seat', state !== 'empty' ? state : null, sale ? 'sold' : null, stadium ? 'stadium-block' : null].filter(Boolean).join(' ');
+  const accessible = ACCESSIBLE_SEATS.has(idx);
+  btn.className = ['seat', state !== 'empty' ? state : null, sale ? 'sold' : null, stadium ? 'stadium-block' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
 
   const num = document.createElement('span');
   num.className = 'seat-num';
   num.textContent = stadium ? STADIUM_BLOCKS[idx].label : idx + 1;
   btn.appendChild(num);
+
+  if(accessible){
+    const wheel = document.createElement('span');
+    wheel.className = 'accessible-badge';
+    wheel.textContent = '♿';
+    wheel.setAttribute('aria-hidden', 'true');
+    btn.appendChild(wheel);
+  }
 
   if(sale){
     const badge = document.createElement('span');
@@ -752,6 +814,7 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
 
     if(isStadiumMode()){
       // renderGrid() will resize seatStates/seatSales to STADIUM_BLOCKS.length.
+      if(pruneAccessibleSeats(STADIUM_BLOCKS.length)) pushAccessibleSeats();
       renderGrid();
       pushSeatStates();
       pushSalesData();
@@ -1109,7 +1172,7 @@ async function openSeatModal(idx){
   modalDiscount = null;
   modalHeldIdx = null;
 
-  seatModalTitle.textContent = seatLabelFor(idx);
+  seatModalTitle.textContent = seatLabelFor(idx) + (ACCESSIBLE_SEATS.has(idx) ? ' ♿' : '');
 
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
@@ -1457,7 +1520,12 @@ let ticketCancelContext = null;
 
 function showTicketView(idx, sale, eventInfo){
   document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
-  document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo);
+  // eventInfo verilmişse (Biletim Var akışı) o etkinliğin kendi listesine
+  // bak — ACCESSIBLE_SEATS o an ekranda açık olan BAŞKA bir etkinliğe ait
+  // olabilir, index eşleşmesi yanlış koltuğu işaretli gösterebilirdi.
+  const accessibleList = eventInfo ? (Array.isArray(eventInfo.accessible_seats) ? eventInfo.accessible_seats : []) : [...ACCESSIBLE_SEATS];
+  const isAccessible = accessibleList.includes(idx);
+  document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo) + (isAccessible ? ' ♿' : '');
   // Fiyat liste fiyatından farklıysa sebebini de yaz — zam mı, indirim mi,
   // ikisi birden mi. (Eskiden indirim kodu yokken bile "kod: null" yazıyordu.)
   const odeme = paymentLabel(sale.payment) || '-';
@@ -1755,7 +1823,7 @@ async function findMyTicket(){
   try {
     const [salesRes, eventsRes] = await Promise.all([
       supabaseClient.from('event_sales').select('event_id, seat_sales'),
-      supabaseClient.from('events').select('id, name, venue_type, cols, rows'),
+      supabaseClient.from('events').select('id, name, venue_type, cols, rows, accessible_seats'),
     ]);
     if(salesRes.error) throw salesRes.error;
     if(eventsRes.error) throw eventsRes.error;
@@ -1933,6 +2001,18 @@ function pushLayout(){
   }, 400);
 }
 
+function pushAccessibleSeats(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerAccessibleSeats);
+  pushTimerAccessibleSeats = setTimeout(async () => {
+    const { error } = await supabaseClient.from('events').update({
+      accessible_seats: [...ACCESSIBLE_SEATS],
+      updated_at: new Date().toISOString(),
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
+  }, 400);
+}
+
 function pushVenueType(){
   if(!supabaseClient || isApplyingRemote || !currentEventId) return;
   clearTimeout(pushTimerVenueType);
@@ -1989,6 +2069,7 @@ function applySeatsPayload(row){
   DYNAMIC_PRICING = (row.dynamic_pricing && typeof row.dynamic_pricing === 'object')
     ? { ...DEFAULT_DYNAMIC, ...row.dynamic_pricing }
     : { ...DEFAULT_DYNAMIC };
+  ACCESSIBLE_SEATS = new Set(Array.isArray(row.accessible_seats) ? row.accessible_seats : []);
   normalizeSalesLength();
 
   colsInput.value = cols;
@@ -2471,6 +2552,7 @@ async function enterEvent(id, nameHint, skipUrl){
   // dinlediği için her koltuk değişikliği aynı satırı iki kez gönderiyordu.
   unsubscribeEventsListRealtime();
   setBulkMode(false);
+  setAccessMode(false);
   bulkSelected.clear();
 
   currentEventId = id;

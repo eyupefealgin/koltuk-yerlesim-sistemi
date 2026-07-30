@@ -206,6 +206,14 @@ alter table events add column if not exists poster_url text;
 alter table events add column if not exists dynamic_pricing jsonb not null
   default '{"enabled":false,"threshold":80,"increase":10}'::jsonb;
 
+-- ============================================================
+-- ERISILEBILIR / ENGELLI KOLTUK ISARETLEME (etkinlik basina)
+-- ============================================================
+-- accessible_seats: koltuk indekslerinin (int) dizisi, ornegin [3, 4, 27].
+-- Koltugun dolu/bos durumundan bagimsiz, sabit bir fiziksel ozellik.
+alter table events add column if not exists accessible_seats jsonb not null
+  default '[]'::jsonb;
+
 -- Bir indirim kodunu atomik olarak "kullan": kod yoksa CODE_NOT_FOUND,
 -- kullanim limiti dolduysa CODE_EXHAUSTED hatasi verir; gecerliyse
 -- used_count'u +1 yapar ve guncel kod kaydini (tip/deger) dondurur --

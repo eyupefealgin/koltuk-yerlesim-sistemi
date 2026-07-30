@@ -1263,6 +1263,27 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   animation: pulse-gold 2s ease-in-out infinite;
 }
 
+.accessible-badge{
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2f6fed;
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(47, 111, 237, 0.35);
+}
+.seat.accessible{ outline: 2px solid rgba(47, 111, 237, 0.55); outline-offset: 1px; }
+.mode-chip.admin-only.is-active{ background: #2f6fed; border-color: #2f6fed; color: #fff; }
+
 .seat-grid.guest-mode .seat{ cursor: default; }
 .seat-grid.guest-mode .seat:hover{
   transform: none;
