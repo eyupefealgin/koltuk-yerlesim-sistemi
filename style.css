@@ -3,7 +3,7 @@
    Zemin mor eğilimli siyah, vurgu orkide moru, satılan kehribar.
    ═══════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Pacifico&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root{
   /* Zemin — mor eğilimli nötrler (düz gri "seçilmemiş" duruyor) */
@@ -105,7 +105,6 @@
 
   /* Tipografi */
   --font: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-script: 'Pacifico', 'Segoe Script', cursive;
 }
 
 /* ===== Reset & Base ===== */
@@ -119,16 +118,16 @@ body{
   min-height: 100vh;
   overflow-x: hidden;
   background-image:
-    radial-gradient(ellipse 70% 45% at 15% -5%, rgba(122, 90, 224, 0.16) 0%, transparent 70%),
-    radial-gradient(ellipse 55% 40% at 88% 8%, rgba(232, 164, 76, 0.08) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 45% at 80% 100%, rgba(242, 160, 196, 0.07) 0%, transparent 70%);
+    radial-gradient(ellipse 70% 45% at 15% -5%, rgba(122, 90, 224, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 55% 40% at 88% 8%, rgba(232, 164, 76, 0.04) 0%, transparent 70%);
   background-attachment: fixed;
 }
 
-/* ===== Zeminde yüzen geometrik kapsüller =====
-   Sayfa boyunca sabit duran, ağır bulanıklaştırılmış kapsül şekilleri.
-   Dekoratif oldukları için aria-hidden bir katmanda değil, ::before/::after
-   ile üretiliyorlar — DOM'a boş div eklemeye gerek yok. */
+/* ===== Zeminde köşelerde sabit duran ambiyans lekeleri =====
+   İlk sürümde bunlar hero metninin tam arkasında duran büyük, belirgin
+   "spotlight" leke çiftiydi (klasik AI/şablon SaaS hero'sunun imzası) —
+   şimdi kenarlara itilmiş, çok daha soluk, sayfa dokusu gibi duran bir
+   ambiyans. Odak metinde kalsın, arka planda değil. */
 .bg-decor{
   position: fixed;
   inset: 0;
@@ -140,39 +139,39 @@ body{
   position: absolute;
   display: block;
   border-radius: 999px;
-  filter: blur(42px);
-  opacity: .5;
+  filter: blur(60px);
+  opacity: .16;
 }
 .bg-decor span:nth-child(1){
-  width: 30vw; height: 12vw; min-width: 260px; min-height: 110px;
-  top: 6%; left: -6%;
+  width: 26vw; height: 11vw; min-width: 220px; min-height: 100px;
+  top: -4%; left: -14%;
   background: linear-gradient(120deg, var(--accent), transparent 75%);
   transform: rotate(-24deg);
 }
 .bg-decor span:nth-child(2){
-  width: 22vw; height: 9vw; min-width: 200px; min-height: 90px;
-  top: 24%; right: -4%;
+  width: 20vw; height: 8vw; min-width: 180px; min-height: 80px;
+  top: 30%; right: -12%;
   background: linear-gradient(120deg, var(--sold), transparent 75%);
   transform: rotate(18deg);
-  opacity: .32;
+  opacity: .1;
 }
 .bg-decor span:nth-child(3){
-  width: 26vw; height: 10vw; min-width: 220px; min-height: 100px;
-  bottom: 12%; left: 12%;
+  width: 22vw; height: 9vw; min-width: 200px; min-height: 90px;
+  bottom: 6%; left: -10%;
   background: linear-gradient(120deg, var(--accent-rose), transparent 78%);
   transform: rotate(-12deg);
-  opacity: .3;
+  opacity: .09;
 }
 .bg-decor span:nth-child(4){
-  width: 18vw; height: 18vw; min-width: 180px; min-height: 180px;
-  bottom: -6%; right: 16%;
+  width: 16vw; height: 16vw; min-width: 160px; min-height: 160px;
+  bottom: -10%; right: 4%;
   background: radial-gradient(circle, var(--accent-dim), transparent 70%);
-  opacity: .35;
+  opacity: .12;
 }
 /* Süslemeler ekranı yavaşlatmasın diye hareket etmiyorlar; yine de
    azaltılmış hareket tercihinde bulanıklığı da düşürüyoruz (GPU yükü). */
 @media (prefers-reduced-motion: reduce){
-  .bg-decor span{ filter: blur(30px); }
+  .bg-decor span{ filter: blur(40px); }
 }
 /* İçerik süslemelerin üstünde kalmalı */
 .app-root, .login-gate{ position: relative; z-index: 1; }
@@ -270,10 +269,7 @@ input{ font-family: inherit; }
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 8px;
-  background: linear-gradient(135deg, var(--text-bright), var(--gold));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-bright);
 }
 
 .login-sub{
@@ -972,55 +968,42 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 .event-list-view[hidden]{ display: none; }
 
-/* ===== HERO (yalnızca halka açık site) ===== */
+/* ===== HERO (yalnızca halka açık site) =====
+   Bilinçli olarak KÜÇÜK: bu bir satış/pazarlama sayfası değil, koltuk
+   seçme aracı — asıl iş aşağıdaki etkinlik listesinde. Eskiden burada
+   büyük harf "eyebrow" etiketi (üst çubuktaki marka adını tekrarlıyordu),
+   gradyan dolgulu el yazısı satırı ve arkada büyük bulanık ışık topları
+   vardı; hepsi tek bir kalıptan geliyordu (v0/şablon üretimi pazarlama
+   hero'su) ve ürüne özgü hiçbir şey söylemiyordu. */
 .hero{
-  padding: 26px 0 40px;
+  padding: 22px 0 34px;
   max-width: 46ch;   /* satır uzunluğunu okunur tut */
 }
-.hero-eyebrow{
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--accent-light);
-  margin-bottom: 14px;
-}
 .hero-title{
-  font-size: clamp(2.1rem, 6vw, 3.9rem);
-  font-weight: 800;
-  line-height: 1.04;
-  letter-spacing: -0.03em;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.01em;
   text-wrap: balance;
   color: var(--text-bright);
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
-/* El yazısı vurgu: tek bir yerde kullanılıyor — hero'nun ikinci satırı.
-   Arayüzün başka hiçbir yerinde yok, okunurluğu bozmasın. */
-.hero-script{
-  display: block;
-  font-family: var(--font-script);
-  font-weight: 400;
-  font-size: 1.06em;
-  line-height: 1.28;
-  letter-spacing: 0;
-  padding-right: .12em;   /* Pacifico'nun sağa taşan kuyruğu kırpılmasın */
-  background: linear-gradient(100deg, var(--accent-rose) 0%, var(--accent-light) 52%, var(--accent) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-/* background-clip:text desteklenmezse metin görünmez kalırdı — geri düş. */
-@supports not ((-webkit-background-clip: text) or (background-clip: text)){
-  .hero-script{
-    -webkit-text-fill-color: currentColor;
-    color: var(--accent-light);
-  }
+/* Vurgu tek bir renk — gradyan yok. Metnin altını fosforlu kalemle
+   çizmiş gibi düz bir şerit: bir bileti/koltuğu işaretlemek fikrine
+   gradyan bir "SaaS başlığı" hissinden daha yakın. */
+.hero-mark{
+  color: var(--text-bright);
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-size: 100% 0.3em;
+  background-position: 0 92%;
+  padding: 0 .06em;
 }
 .hero-sub{
-  font-size: 1.02rem;
+  font-size: .96rem;
   color: var(--text-secondary);
-  line-height: 1.65;
+  line-height: 1.6;
+  max-width: 42ch;
 }
 .hero-meta{
   margin-top: 16px;
