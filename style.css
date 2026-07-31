@@ -1037,6 +1037,10 @@ body[data-role="guest"] .editor-only{ display: none !important; }
    KOLTUK IZGARASI — düz dolgu, ince kenarlık, gölge yok
    ═══════════════════════════════════════ */
 .grid-hint{ margin: 0 0 20px; font-size: .88rem; color: var(--text-muted); text-align: center; font-weight: 400; }
+/* Supabase'den koltuk verisi gelene kadar gösterilen yer tutucu — yoksa
+   yavaş bir bağlantıda ızgara bir an bomboş kalıp bozuk/silinmiş gibi
+   görünüyordu. */
+.grid-loading{ padding: 60px 0; text-align: center; color: var(--text-muted); font-size: .9rem; }
 .grid-scroll{ overflow-x: auto; padding-bottom: 10px; text-align: center; }
 .grid-scroll::-webkit-scrollbar{ height: 6px; }
 .grid-scroll::-webkit-scrollbar-track{ background: var(--tint); border-radius: 3px; }

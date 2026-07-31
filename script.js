@@ -2686,6 +2686,12 @@ async function enterEvent(id, nameHint, skipUrl){
   eventListView.hidden = true;
   eventDetailView.hidden = false;
 
+  // Supabase'den veri gelene kadar ızgara bomboş kalıyordu — bir bağlantı
+  // yavaşsa bu "bozuk/silinmiş" gibi görünüyordu. renderGrid()/
+  // renderStadiumGrid() zaten seatGrid.innerHTML'i temizleyip yeniden
+  // dolduruyor, o yüzden burada ekstra bir temizleme kodu gerekmiyor.
+  seatGrid.innerHTML = '<p class="grid-loading">Koltuklar yükleniyor…</p>';
+
   await ensureEventSeatsSync(id);
   if(canEdit()) await ensureEventSalesSync(id);
 }
