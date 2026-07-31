@@ -379,7 +379,9 @@ input{ font-family: inherit; }
 .app-root[hidden]{ display: none; }
 
 .topbar{
-  background: rgba(250, 248, 243, 0.8);
+  /* Eski acik temanin fildisi rengi (rgba(250,248,243,...)) buradan hic
+     degismemisti — koyu zeminde parlak beyaz bir serit gibi duruyordu. */
+  background: rgba(21, 18, 31, 0.75);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border-bottom: 1px solid var(--border);
