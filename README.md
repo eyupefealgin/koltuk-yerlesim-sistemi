@@ -44,18 +44,19 @@ Sinema/tiyatro/konser/futbol sahası gibi **birden çok etkinlik** için koltuk 
 
 ## Arayüz / Tema
 
-"Gece Prizması" — mor eğilimli koyu zemin, zeminde sabit duran bulanık geometrik kapsüller, vurgu olarak orkide moru. Yazı tipi Outfit; el yazısı **Pacifico** yalnızca tek bir yerde (halka açık sayfanın hero başlığında) degradeli vurgu satırı olarak kullanılıyor — arayüzün geri kalanında okunurluğu bozmasın diye hiç geçmiyor.
+"Editoryal Karanlık" — sıcak neredeyse-siyah zemin, ince tek-piksel kenarlıklar, düz dolgular (gradyan/parıltı yok), serif başlık (**Fraunces**) + sade gövde fontu (Outfit), tek bir vurgu rengi (bordo). Bunu, aynı fikrin gradyanlı/camsı-parıltılı bir öncülü ("Gece Prizması") ile birlikte kullanıcıya karşılaştırmalı olarak gösterip seçtirdik — jenerik "AI SaaS kiti" hissi rengin kendisinden değil, gradyan/parıltı/aşırı-yuvarlak biçim dilinden geliyordu. O yüzden bu turda **kısıtlama** asıl değişiklik: buton/panel/kart gölgeleri kaldırıldı, "hap" biçimli etiketler küçük dikdörtgene döndü, yarıçap ölçeği 24px'ten 3-6px'e indi.
 
 Renkler anlamlarına göre ayrı tutuldu; hepsi düz nötr griden kaçınacak biçimde seçildi:
 
 | Rol | Renk | Not |
 |---|---|---|
-| Vurgu (buton/odak) | `#7A5AE0` orkide | Beyaz metinle 4.8:1 |
-| Satılan koltuk | `#E8A44C` kehribar | Vurgudan ayrı; mor halka mavi/gül dolgu üstünde kayboluyordu |
-| Erkek / Kadın | `#3569BE` / `#A84770` | Koltuk numarası beyaz basıldığı için degradenin **en açık** ucu da 4.5:1'i geçiyor |
+| Vurgu (buton dolgusu) | `#9C2A4C` bordo | Beyaz metinle 7.4:1 |
+| Vurgu (rozet/etiket metni) | `#D9748F` açık bordo | Koyu zeminde okunması için ayrı bir ton — buton dolgusunun aynısı olsaydı okunmazdı |
+| Satılan koltuk | `#E8A44C` kehribar | Vurgudan ayrı; bordo halka mavi/gül dolgu üstünde kayboluyordu |
+| Erkek / Kadın | `#3569BE` / `#A84770` | Koltuk numarası beyaz basıldığı için 4.5:1'i geçecek şekilde seçildi (önceki turdan korunuyor) |
 | Erişilebilir koltuk | `#2FD4C0` camgöbeği | Diğer dört durumdan ayırt edilebilir beşinci ton |
 
-Tüm metin/zemin çiftleri tarayıcıda ölçüldü, en düşük oran 4.5:1 üzerinde (gövde metni 16.6:1). Dokunmatikte filtre/mod çipleri 44px'e çıkarılıyor.
+Tüm metin/zemin çiftleri tarayıcıda ölçüldü, en düşük oran 4.5:1 üzerinde (gövde metni 16:1). Dokunmatikte filtre/mod çipleri 44px'e çıkarılıyor.
 
 ## Teknolojiler
 HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (yerel, MIT lisanslı)
