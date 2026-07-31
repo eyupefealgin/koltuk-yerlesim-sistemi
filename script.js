@@ -695,7 +695,12 @@ function renderSeatVisual(btn, idx){
   // sale, which used to wipe className back to just "seat" + state, losing
   // the stadium sizing class.
   const accessible = ACCESSIBLE_SEATS.has(idx);
-  btn.className = ['seat', state !== 'empty' ? state : null, sale ? 'sold' : null, stadium ? 'stadium-block' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
+  // "empty" de dahil DAİMA bir durum sınıfı eklenmeli: "Boş" filtre çipi
+  // .seat:not(.empty) arıyor — eskiden boş koltuklar hiç sınıf almadığı
+  // için bu filtre hiçbir zaman doğru koltuğu bulamıyor, her şeyi
+  // soluklaştırıyordu. .seat.empty için ayrı bir görsel kural yok, o
+  // yüzden bu eklemenin görünüme etkisi yok, sadece filtreyi düzeltiyor.
+  btn.className = ['seat', state, sale ? 'sold' : null, stadium ? 'stadium-block' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
 
   const num = document.createElement('span');
