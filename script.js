@@ -35,6 +35,37 @@ const DEFAULT_TIERS = [
 ];
 let TICKET_TIERS = [...DEFAULT_TIERS];
 
+// Futbol Sahası için ayrı bir fiyat kategorisi seti — gerçek stadyum bilet
+// biletlemesi gibi bölgeler cinsiyete değil fiyat katmanına göre renkleniyor
+// (bkz. buildStadiumBlocks). Admin bunları da normal "Bilet Türleri" panelinden
+// düzenleyebiliyor, isim/fiyat serbest; sadece id eşleşmesi STADIUM_TIER_COLORS
+// ile renk bağlantısını sağlıyor.
+const DEFAULT_STADIUM_TIERS = [
+  { id: 'premium', label: 'Premium', price: 5000 },
+  { id: 'gold-vip', label: 'Gold VIP', price: 3500 },
+  { id: 'classic-vip', label: 'Classic VIP', price: 3000 },
+  { id: 'numarali-ust-vip', label: 'Numaralı Üst VIP', price: 2750 },
+  { id: 'dogu-maraton-alt', label: 'Doğu Maraton Alt', price: 2500 },
+  { id: 'dogu-maraton-ust', label: 'Doğu Maraton Üst', price: 2000 },
+  { id: 'guney-alt', label: 'Güney Alt', price: 1500 },
+  { id: 'guney-ust', label: 'Güney Üst', price: 1500 },
+  { id: 'kuzey-kale-arkasi-alt', label: 'Kuzey Kale Arkası Alt', price: 1500 },
+  { id: 'kuzey-kale-arkasi-ust', label: 'Kuzey Kale Arkası Üst', price: 1500 },
+];
+// Beyaz metinle 4.5:1+ verecek şekilde seçildi (tarayıcıda doğrulandı).
+const STADIUM_TIER_COLORS = {
+  'premium': '#B23A5C',
+  'gold-vip': '#7A2233',
+  'classic-vip': '#A33B3B',
+  'numarali-ust-vip': '#5B3A8C',
+  'dogu-maraton-alt': '#3A8456',   // #3E8E5C beyazla 4.02 idi, 4.55'e düşürüldü
+  'dogu-maraton-ust': '#2A6B45',
+  'guney-alt': '#3B6FD1',
+  'guney-ust': '#244A96',
+  'kuzey-kale-arkasi-alt': '#A76526',   // #C97A2E beyazla 3.33 idi, 4.63'e düşürüldü
+  'kuzey-kale-arkasi-ust': '#96591F',
+};
+
 // Unique-enough code for a ticket's QR + check-in lookup. Not cryptographic —
 // this app has no real auth, so it's already only as secure as "don't share
 // your ticket code," same trust level as a printed paper ticket.
@@ -57,42 +88,51 @@ function isStadiumMode(){
   return venueType === 'futbol';
 }
 
-// Fixed stadium seating map for Futbol Sahası: a pitch in the center with
-// named tribün blocks arranged around it (Doğu/Batı = uzun kenarlar,
-// Kuzey/Güney = kısa kenarlar), each stand split into an inner tier (nearer
-// the pitch) and outer tier (back row), plus corner special blocks —
-// original layout, not a copy of any specific real stadium's chart. Each
-// block is just one entry in seatStates/seatSales, same as a numbered seat,
-// so the whole sale/sync/data-minimization pipeline is reused unchanged.
+// Fixed stadium seating map for Futbol Sahası: bir saha, çevresinde gerçek
+// stadyum bilet şemalarındaki gibi FİYAT KATMANINA göre renklenen tribün
+// blokları (bkz. DEFAULT_STADIUM_TIERS/STADIUM_TIER_COLORS) — orijinal
+// düzen, belirli bir gerçek stadyumun kopyası değil. Her blok, numaralı bir
+// koltuk gibi seatStates/seatSales'te tek bir giriş; satış/senkron/veri
+// azaltma hattının tamamı değişmeden kullanılıyor. Cinsiyet hâlâ satın alma
+// adımında soruluyor, sadece artık blok rengini belirlemiyor (o iş fiyat
+// katmanının).
 //
-// Grid is exactly 10 columns × 8 rows with no unused tracks (1-2 = left
-// tier, 3-8 = pitch, 9-10 = right tier; same idea for rows) — an earlier
-// version declared 11 columns while only using 10, leaving a dead column
-// that pushed the whole diagram off-center.
+// Grid 10 sütun × 8 satır (1-2 = sol katman, 3-8 = saha, 9-10 = sağ katman;
+// satırlarda da aynı mantık).
 function buildStadiumBlocks(){
   const blocks = [];
-  const fieldCols = [3, 4, 5, 6, 7, 8];
-  const innerLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const outerLetters = ['G', 'H', 'I', 'J', 'K', 'L'];
 
-  fieldCols.forEach((c, i) => blocks.push({ label: `Doğu ${innerLetters[i]}`, col: `${c} / ${c + 1}`, row: '2 / 3' }));
-  fieldCols.forEach((c, i) => blocks.push({ label: `Doğu ${outerLetters[i]}`, col: `${c} / ${c + 1}`, row: '1 / 2' }));
-  fieldCols.forEach((c, i) => blocks.push({ label: `Batı ${innerLetters[i]}`, col: `${c} / ${c + 1}`, row: '7 / 8' }));
-  fieldCols.forEach((c, i) => blocks.push({ label: `Batı ${outerLetters[i]}`, col: `${c} / ${c + 1}`, row: '8 / 9' }));
+  // ÜST kenar (eski "Doğu") — sahaya en yakın taraf: 4 üst-katman fiyat
+  // kategorisi, 3'er blok. İçteki sıra (2. satır) ucuz VIP çiftini, dıştaki
+  // sıra (1. satır) pahalı VIP çiftini taşıyor — referans şemadaki gibi.
+  const topTierGroups = [
+    { tier: 'premium', cols: [3, 4, 5], row: '2 / 3' },
+    { tier: 'gold-vip', cols: [6, 7, 8], row: '2 / 3' },
+    { tier: 'classic-vip', cols: [3, 4, 5], row: '1 / 2' },
+    { tier: 'numarali-ust-vip', cols: [6, 7, 8], row: '1 / 2' },
+  ];
+  topTierGroups.forEach(g => {
+    const label = DEFAULT_STADIUM_TIERS.find(t => t.id === g.tier).label;
+    g.cols.forEach((c, i) => blocks.push({ label: `${label} ${i + 1}`, col: `${c} / ${c + 1}`, row: g.row, tier: g.tier }));
+  });
+
+  // ALT kenar (eski "Batı") — 2 fiyat katmanı, 6'şar blok.
+  const fieldCols = [3, 4, 5, 6, 7, 8];
+  const bottomAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'dogu-maraton-alt').label;
+  const bottomUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'dogu-maraton-ust').label;
+  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomAltLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '7 / 8', tier: 'dogu-maraton-alt' }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomUstLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '8 / 9', tier: 'dogu-maraton-ust' }));
 
   const fieldRows = [3, 4, 5, 6];
-  const shortInner = ['A', 'B', 'C', 'D'];
-  const shortOuter = ['E', 'F', 'G', 'H'];
+  const leftAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'guney-alt').label;
+  const leftUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'guney-ust').label;
+  fieldRows.forEach((r, i) => blocks.push({ label: `${leftAltLabel} ${i + 1}`, col: '2 / 3', row: `${r} / ${r + 1}`, tier: 'guney-alt' }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${leftUstLabel} ${i + 1}`, col: '1 / 2', row: `${r} / ${r + 1}`, tier: 'guney-ust' }));
 
-  fieldRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortInner[i]}`, col: '2 / 3', row: `${r} / ${r + 1}` }));
-  fieldRows.forEach((r, i) => blocks.push({ label: `Kuzey ${shortOuter[i]}`, col: '1 / 2', row: `${r} / ${r + 1}` }));
-  fieldRows.forEach((r, i) => blocks.push({ label: `Güney ${shortInner[i]}`, col: '9 / 10', row: `${r} / ${r + 1}` }));
-  fieldRows.forEach((r, i) => blocks.push({ label: `Güney ${shortOuter[i]}`, col: '10 / 11', row: `${r} / ${r + 1}` }));
-
-  blocks.push({ label: 'VIP', col: '1 / 3', row: '1 / 3' });
-  blocks.push({ label: 'Misafir', col: '9 / 11', row: '1 / 3' });
-  blocks.push({ label: 'Basın', col: '1 / 3', row: '7 / 9' });
-  blocks.push({ label: 'Protokol', col: '9 / 11', row: '7 / 9' });
+  const rightAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'kuzey-kale-arkasi-alt').label;
+  const rightUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'kuzey-kale-arkasi-ust').label;
+  fieldRows.forEach((r, i) => blocks.push({ label: `${rightAltLabel} ${i + 1}`, col: '9 / 10', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-alt' }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${rightUstLabel} ${i + 1}`, col: '10 / 11', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-ust' }));
 
   return blocks;
 }
@@ -178,6 +218,7 @@ const totalPreview = document.getElementById('totalPreview');
 const layoutControlsEl = document.getElementById('layoutControls');
 const stadiumNoteEl = document.getElementById('stadiumNote');
 const seatGrid = document.getElementById('seatGrid');
+const stadiumLegendEl = document.getElementById('stadiumLegend');
 const gridHint = document.getElementById('gridHint');
 const screenAccentEl = document.getElementById('screenAccent');
 const tierListEl = document.getElementById('tierList');
@@ -396,6 +437,7 @@ function renderGrid(){
   }
 
   seatGrid.classList.remove('stadium-mode');
+  if(stadiumLegendEl) stadiumLegendEl.hidden = true;
   // Seats are direct grid children so CSS Grid wraps them into real rows —
   // wrapping them in per-row divs previously made every row a single grid
   // item, so all rows collapsed onto one visual line.
@@ -466,6 +508,10 @@ function renderStadiumGrid(){
     renderSeatVisual(btn, idx);
     btn.style.gridColumn = block.col;
     btn.style.gridRow = block.row;
+    // Futbolda blok rengi cinsiyete değil FİYAT KATMANINA göre — inline
+    // stil sınıf tabanlı erkek/kadın dolgusunu ezer (satır içi > sınıf).
+    // Dolu/boş/satılan durumu artık renkle değil rozet/halka ile gösteriliyor.
+    if(block.tier && STADIUM_TIER_COLORS[block.tier]) btn.style.background = STADIUM_TIER_COLORS[block.tier];
     if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
     btn.addEventListener('click', () => handleSeatClick(idx, btn));
     seatGrid.appendChild(btn);
@@ -474,6 +520,36 @@ function renderStadiumGrid(){
 
   updateStats();
   applyFilterAndSearch();
+  renderStadiumLegend();
+}
+
+// Fiyat katmanı lejantı — referans stadyum bilet şemalarındaki gibi renk
+// karesi + kategori adı + fiyat listesi. Yalnızca futbol modunda gösterilir;
+// TICKET_TIERS'tan okur, yani yönetici "Bilet Türleri" panelinden fiyatları
+// değiştirirse burada da anında yansır.
+function renderStadiumLegend(){
+  if(!stadiumLegendEl) return;
+  if(!isStadiumMode()){ stadiumLegendEl.hidden = true; return; }
+
+  stadiumLegendEl.innerHTML = '';
+  TICKET_TIERS.forEach(tier => {
+    const row = document.createElement('div');
+    row.className = 'stadium-legend-row';
+    const swatch = document.createElement('span');
+    swatch.className = 'stadium-legend-swatch';
+    swatch.style.background = STADIUM_TIER_COLORS[tier.id] || 'var(--tint-3)';
+    const label = document.createElement('span');
+    label.className = 'stadium-legend-label';
+    label.textContent = tier.label;
+    const price = document.createElement('span');
+    price.className = 'stadium-legend-price';
+    price.textContent = `${tier.price}₺`;
+    row.appendChild(swatch);
+    row.appendChild(label);
+    row.appendChild(price);
+    stadiumLegendEl.appendChild(row);
+  });
+  stadiumLegendEl.hidden = false;
 }
 
 function handleSeatClick(idx, btn){
@@ -813,6 +889,12 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
     pushVenueType();
 
     if(isStadiumMode()){
+      // Futbol Sahası kendi fiyat katmanı setini kullanıyor (bkz.
+      // buildStadiumBlocks) — sinema/tiyatro'dan kalma Standart/VIP/Öğrenci
+      // burada anlamsız, bloklar zaten o katmanların adını taşıyor.
+      TICKET_TIERS = [...DEFAULT_STADIUM_TIERS];
+      renderTierList();
+      pushTiers();
       // renderGrid() will resize seatStates/seatSales to STADIUM_BLOCKS.length.
       if(pruneAccessibleSeats(STADIUM_BLOCKS.length)) pushAccessibleSeats();
       renderGrid();
@@ -2399,7 +2481,8 @@ async function createEvent(){
   try {
     const { data, error } = await supabaseClient.from('events').insert({
       name, event_date: date, venue_type: vType,
-      cols: evCols, rows: evRows, seat_states: encodeSeatStates(states), tiers: DEFAULT_TIERS,
+      cols: evCols, rows: evRows, seat_states: encodeSeatStates(states),
+      tiers: vType === 'futbol' ? DEFAULT_STADIUM_TIERS : DEFAULT_TIERS,
       poster_url: safeImageUrl(newEventPoster.value), status: 'active',
     }).select().single();
     if(error) throw error;
@@ -2478,7 +2561,9 @@ async function createDemoData(){
       for(let i = 0; i < total; i++){
         if(((i * 7 + e * 3) % 11) / 11 >= d.fill) continue;
 
-        const tier = DEFAULT_TIERS[(i + e) % DEFAULT_TIERS.length];
+        const tier = isStadium
+          ? DEFAULT_STADIUM_TIERS.find(t => t.id === STADIUM_BLOCKS[i].tier)
+          : DEFAULT_TIERS[(i + e) % DEFAULT_TIERS.length];
         states[i] = ((i + e) % 2 === 0) ? 'male' : 'female';
 
         // Satislari son 10 gune yay ki satis grafigi anlamli gorunsun.
@@ -2504,7 +2589,7 @@ async function createDemoData(){
         venue_type: d.venue,
         cols: evCols, rows: evRows,
         seat_states: encodeSeatStates(states),
-        tiers: DEFAULT_TIERS,
+        tiers: isStadium ? DEFAULT_STADIUM_TIERS : DEFAULT_TIERS,
         poster_url: d.poster,
         // Tiyatro etkinliginde dinamik fiyatlandirma acik olsun ki ozellik
         // demoda gorunur olsun (doluluk %50, esik %40 -> zam aktif).

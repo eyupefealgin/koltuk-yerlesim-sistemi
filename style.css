@@ -1152,8 +1152,38 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-radius: var(--radius-xs);
   font-size: .66rem; line-height: 1.25; padding: 4px 3px;
   white-space: normal; text-align: center;
+  /* Renk artık cinsiyete değil fiyat katmanına göre (satır içi stil,
+     bkz. renderStadiumGrid) — o katman renklerinin hepsi beyaz metinle
+     4.5:1+ verecek şekilde seçildi, durum sınıfından (erkek/kadın/boş)
+     bağımsız olarak beyaz sabitleniyor. */
+  color: #fff !important;
 }
 .stadium-block .seat-num{ font-weight: 700; }
+
+/* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
+.stadium-legend{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  justify-content: center;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.stadium-legend[hidden]{ display: none; }
+.stadium-legend-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .82rem;
+}
+.stadium-legend-swatch{
+  width: 14px; height: 14px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+}
+.stadium-legend-label{ color: var(--text-secondary); }
+.stadium-legend-price{ color: var(--text-bright); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ═══════════════════════════════════════
    TOAST
