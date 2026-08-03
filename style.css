@@ -1164,6 +1164,41 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 .stadium-block .seat-num{ font-weight: 700; }
 
+/* Dolu blok kaplaması — misafire de görünür olmalı. "Satılan" rozeti/halkası
+   seatSales verisine dayanıyor ve bu veri gizlilik nedeniyle misafire hiç
+   gönderilmiyor (bkz. event_sales erişim kısıtı) — o yüzden misafir hiçbir
+   bloğun dolu olduğunu göremiyordu. Bu kaplama yerine seatStates'e (erkek/
+   kadın sınıfı, herkese gönderiliyor) bakıyor, satır içi katman renginin
+   ÜSTÜNE bir katman olarak biniyor (background değil, ayrı bir efekt). */
+.stadium-block.male,
+.stadium-block.female{
+  position: relative;
+}
+.stadium-block.male::before,
+.stadium-block.female::before{
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(10, 8, 6, 0.62);
+  pointer-events: none;
+}
+.stadium-block.male .seat-num,
+.stadium-block.female .seat-num{
+  position: relative;
+  z-index: 1;
+}
+.stadium-block.male .seat-num::after,
+.stadium-block.female .seat-num::after{
+  content: 'DOLU';
+  display: block;
+  font-size: .58em;
+  font-weight: 800;
+  letter-spacing: .04em;
+  margin-top: 2px;
+  color: #fff;
+}
+
 /* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
 .stadium-legend{
   display: flex;
