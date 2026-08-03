@@ -231,6 +231,7 @@ const singleModeBtn = document.getElementById('singleModeBtn');
 const bulkModeBtn = document.getElementById('bulkModeBtn');
 const accessModeBtn = document.getElementById('accessModeBtn');
 const startBulkSaleBtn = document.getElementById('startBulkSaleBtn');
+const startBulkSaleLabel = document.getElementById('startBulkSaleLabel');
 const bulkCountEl = document.getElementById('bulkCount');
 
 // Seat modal (satış akışı: cinsiyet → bilet türü → alıcı → ödeme)
@@ -561,13 +562,14 @@ function handleSeatClick(idx, btn){
 
   if(!canPurchase()) return;
 
-  // Toplu seçim sadece personel özelliği — misafir kendi biletini tek tek
-  // (ve sadece boş bir koltuk için) alabilir, bulkMode misafir için hiç
-  // tetiklenmez (araç çubuğu editor-only).
-  if(canEdit() && bulkMode){
+  // Toplu seçim artık misafirde de var (grup/aile bileti için) — sadece
+  // erişilebilirlik işaretleme yönetici özelliği kalıyor. "Dolu" kontrolü
+  // seatStates'e bakıyor (herkese gönderiliyor); seatSales misafirde hiç
+  // yok, o yüzden ona bakılmıyor (her zaman boş/undefined dönerdi).
+  if(bulkMode){
     const state = seatStates[idx] || 'empty';
-    if(state !== 'empty' || seatSales[idx]){
-      toast('Bu koltuk dolu — toplu satış için boş koltuk seç.');
+    if(state !== 'empty'){
+      toast('Bu koltuk dolu — toplu seçim için boş koltuk seç.');
       return;
     }
     if(bulkSelected.has(idx)){
@@ -587,6 +589,7 @@ function handleSeatClick(idx, btn){
 function updateBulkToolbar(){
   bulkCountEl.textContent = bulkSelected.size;
   startBulkSaleBtn.hidden = bulkSelected.size === 0;
+  startBulkSaleLabel.textContent = canEdit() ? 'Satışa Başla' : 'Koltukları Al';
 }
 
 function setBulkMode(on){
@@ -1460,8 +1463,13 @@ function updatePriceSummary(){
 
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if(currentRole === 'guest') finalizeGuestPurchase(btn.dataset.payment);
-    else finalizeSeatSale(btn.dataset.payment);
+    if(currentRole === 'guest'){
+      (modalSeatIndices && modalSeatIndices.length > 1)
+        ? finalizeGuestBulkPurchase(btn.dataset.payment)
+        : finalizeGuestPurchase(btn.dataset.payment);
+    } else {
+      finalizeSeatSale(btn.dataset.payment);
+    }
   });
 });
 
@@ -1568,6 +1576,67 @@ async function finalizeGuestPurchase(payment){
         : 'Satın alma başarısız — buluta bağlanılamadı.');
     closeSeatModal();
   }
+}
+
+// Misafirin çoklu koltuk seçip tek akışta (bir isim + bir ödeme yöntemi)
+// satın alması — grup/aile bileti için. Tek koltuklu misafir akışı gibi
+// tüm-diziyi-yeniden-yazan push YERİNE her koltuk için ayrı ayrı atomik
+// purchase_seat() çağrılır (önceden reserve_seat ile TUTULMADAN — RPC'nin
+// kendisi zaten "hâlâ boşsa" kontrolünü atomik yapıyor, bkz. supabase-setup.sql).
+// Bu yüzden N koltuktan biri araya girip başkası tarafından alınmışsa sadece
+// o koltuk başarısız olur, diğerleri etkilenmez.
+async function finalizeGuestBulkPurchase(payment){
+  const targets = modalSeatIndices ? [...modalSeatIndices] : [];
+  if(!targets.length || !currentEventId) return;
+
+  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
+    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
+    return;
+  }
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier) return;
+
+  const basarili = [];
+  let basarisizSayisi = 0;
+
+  for(const idx of targets){
+    const sale = buildSaleRecord(tier, payment);
+    try {
+      const { error } = await supabaseClient.rpc('purchase_seat', {
+        p_event_id: currentEventId,
+        p_idx: idx,
+        p_gender: SEAT_STATE_SHORT[modalGender] || modalGender,
+        p_sale: sale,
+        p_token: holdToken,
+      });
+      if(error) throw error;
+
+      seatStates[idx] = modalGender;
+      seatSales[idx] = sale;
+      if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
+      saveMyTicketLocally(currentEventNameBadge.textContent || '', seatLabelFor(idx), sale.ticketCode);
+      basarili.push({ idx, sale });
+    } catch(err){
+      console.warn(`Koltuk ${idx} satın alınamadı.`, err);
+      basarisizSayisi++;
+    }
+  }
+
+  updateStats();
+  bulkSelected.clear();
+  updateBulkToolbar();
+  setBulkMode(false);
+  closeSeatModal();
+
+  if(!basarili.length){
+    toast('Üzgünüz, seçtiğin koltukların hepsi az önce başkası tarafından alındı.');
+    return;
+  }
+  toast(basarisizSayisi
+    ? `${basarili.length} bilet oluşturuldu, ${basarisizSayisi} koltuk az önce başkası tarafından alındı.`
+    : `${basarili.length} bilet oluşturuldu — "Biletim Var" listenden görebilirsin.`);
+  showTicketView(basarili[0].idx, basarili[0].sale);
 }
 
 modalClearSeatBtn.addEventListener('click', () => {
