@@ -746,7 +746,14 @@ function updateStats(){
   document.getElementById('statSold').textContent = sold;
   document.getElementById('statRevenue').textContent = `${revenue} ₺`;
 
-  const occupancyPercent = total > 0 ? Math.round((sold / total) * 100) : 0;
+  // "sold" (seatSales) misafire hic gonderilmiyor (gizlilik) -- oradan
+  // yuzde hesaplarsak misafir icin her etkinlik DAIMA %0 gorunurdu (tam
+  // olarak bu bug canli sitede vardi: liste karti "%55 dolu" derken
+  // etkinlik icindeki Doluluk Orani "%0" gosteriyordu). seatStates
+  // (erkek/kadin/bos) herkese gonderiliyor, dolulugu ondan hesapla --
+  // liste ekranindaki computeOccupancy() de zaten boyle yapiyor.
+  const taken = male + female;
+  const occupancyPercent = total > 0 ? Math.round((taken / total) * 100) : 0;
   const capacityPercentEl = document.getElementById('capacityPercent');
   const capacityBarEl = document.getElementById('capacityBar');
   if (capacityPercentEl) capacityPercentEl.textContent = `${occupancyPercent}%`;
