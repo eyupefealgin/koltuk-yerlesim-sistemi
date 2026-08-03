@@ -190,7 +190,6 @@ const eventFilterPriceMin = document.getElementById('eventFilterPriceMin');
 const eventFilterPriceMax = document.getElementById('eventFilterPriceMax');
 const eventFilterClearBtn = document.getElementById('eventFilterClearBtn');
 const createEventBtn = document.getElementById('createEventBtn');
-const createDemoBtn = document.getElementById('createDemoBtn'); // sadece yonetici.html'de var
 const createEventOverlay = document.getElementById('createEventOverlay');
 const createEventClose = document.getElementById('createEventClose');
 const newEventName = document.getElementById('newEventName');
@@ -2514,117 +2513,6 @@ createEventClose.addEventListener('click', closeCreateEventModal);
 createEventOverlay.addEventListener('click', (e) => { if(e.target === createEventOverlay) closeCreateEventModal(); });
 newEventVenue.addEventListener('change', toggleNewEventDimsVisibility);
 submitCreateEventBtn.addEventListener('click', createEvent);
-
-// ===== Demo verisi =====
-// Bos bir veritabaniyla acilan site "Henuz etkinlik yok" gosteriyor; bu
-// buton sunum/portfolyo icin gercekci gorunumlu ornek etkinlikler uretir.
-// Mevcut veriyi SILMEZ, sadece ekler.
-
-const DEMO_FIRST_NAMES = ['Ahmet', 'Elif', 'Mehmet', 'Zeynep', 'Can', 'Ayşe', 'Burak', 'Deniz', 'Emre', 'Selin', 'Kaan', 'Merve'];
-const DEMO_LAST_NAMES = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Aydın', 'Arslan', 'Doğan'];
-
-// Afişler Unsplash'ten, serbestçe kullanılabilen fotoğraflar.
-const DEMO_EVENTS = [
-  { name: 'Yıldızlararası — Özel Gösterim', venue: 'sinema',  cols: 12, rows: 8,  days: 5,  fill: 0.35,
-    poster: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&q=70' },
-  { name: 'Hamlet',                          venue: 'tiyatro', cols: 10, rows: 6,  days: 12, fill: 0.50,
-    poster: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=600&q=70' },
-  { name: 'Yaz Konseri 2026',                venue: 'konser',  cols: 16, rows: 10, days: 20, fill: 0.18,
-    poster: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=600&q=70' },
-  { name: 'Şehir Derbisi',                   venue: 'futbol',  cols: null, rows: null, days: 30, fill: 0.40,
-    poster: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=600&q=70' },
-];
-
-function demoBuyerName(i){
-  return `${DEMO_FIRST_NAMES[i % DEMO_FIRST_NAMES.length]} ${DEMO_LAST_NAMES[(i * 3) % DEMO_LAST_NAMES.length]}`;
-}
-
-function demoFutureDate(daysAhead){
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  return d.toISOString().slice(0, 10);
-}
-
-async function createDemoData(){
-  if(!supabaseClient) return;
-  if(!confirm('4 örnek etkinlik ve bir miktar satış oluşturulacak. Mevcut etkinlikler silinmez. Devam edilsin mi?')) return;
-
-  createDemoBtn.disabled = true;
-  try {
-    for(let e = 0; e < DEMO_EVENTS.length; e++){
-      const d = DEMO_EVENTS[e];
-      const isStadium = d.venue === 'futbol';
-      const evCols = isStadium ? STADIUM_BLOCKS.length : d.cols;
-      const evRows = isStadium ? 1 : d.rows;
-      const total = evCols * evRows;
-
-      const states = new Array(total).fill('empty');
-      const sales = new Array(total).fill(null);
-
-      // Deterministik ama dagilmis gorunen bir doluluk deseni — her seferinde
-      // ayni sonucu verir, rastgele bir sey yok.
-      for(let i = 0; i < total; i++){
-        if(((i * 7 + e * 3) % 11) / 11 >= d.fill) continue;
-
-        const tier = isStadium
-          ? DEFAULT_STADIUM_TIERS.find(t => t.id === STADIUM_BLOCKS[i].tier)
-          : DEFAULT_TIERS[(i + e) % DEFAULT_TIERS.length];
-        states[i] = ((i + e) % 2 === 0) ? 'male' : 'female';
-
-        // Satislari son 10 gune yay ki satis grafigi anlamli gorunsun.
-        const soldDaysAgo = (i * 3 + e) % 10;
-        const soldAt = new Date();
-        soldAt.setDate(soldAt.getDate() - soldDaysAgo);
-        soldAt.setHours(10 + (i % 10), (i * 7) % 60, 0, 0);
-
-        sales[i] = {
-          tier: tier.id, label: tier.label, price: tier.price,
-          payment: (i % 3 === 0) ? 'nakit' : 'kart',
-          originalPrice: null, discountCode: null, surged: false,
-          soldAt: soldAt.toISOString(),
-          buyerName: demoBuyerName(i + e),
-          ticketCode: generateTicketCode(),
-          checkedIn: i % 5 === 0,   // bir kismi kapidan giris yapmis olsun
-        };
-      }
-
-      const { data, error } = await supabaseClient.from('events').insert({
-        name: d.name,
-        event_date: demoFutureDate(d.days),
-        venue_type: d.venue,
-        cols: evCols, rows: evRows,
-        seat_states: encodeSeatStates(states),
-        tiers: isStadium ? DEFAULT_STADIUM_TIERS : DEFAULT_TIERS,
-        poster_url: d.poster,
-        // Tiyatro etkinliginde dinamik fiyatlandirma acik olsun ki ozellik
-        // demoda gorunur olsun (doluluk %50, esik %40 -> zam aktif).
-        dynamic_pricing: e === 1
-          ? { enabled: true, threshold: 40, increase: 15 }
-          : { ...DEFAULT_DYNAMIC },
-        discount_codes: e === 0
-          ? [{ code: 'ERKEN20', type: 'percent', value: 20, maxUses: 50, usedCount: 3 }]
-          : [],
-        status: 'active',
-      }).select().single();
-      if(error) throw error;
-
-      const { error: salesError } = await supabaseClient.from('event_sales').insert({
-        event_id: data.id, seat_sales: sales,
-      });
-      if(salesError) throw salesError;
-    }
-
-    await loadEvents();
-    toast('Demo verisi oluşturuldu.');
-  } catch(err){
-    console.warn('Demo verisi oluşturulamadı.', err);
-    toast('Demo verisi oluşturulamadı — buluta bağlanılamadı.');
-  } finally {
-    createDemoBtn.disabled = false;
-  }
-}
-
-createDemoBtn?.addEventListener('click', createDemoData);
 
 // ===== Entering / leaving an event =====
 // Açık etkinlik URL'de ?etkinlik=<id> olarak tutuluyor: böylece belirli bir
