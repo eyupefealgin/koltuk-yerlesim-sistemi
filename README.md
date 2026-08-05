@@ -1,4 +1,4 @@
-# Koltuk Yerleşim Sistemi
+# BiletHub
 
 https://eyupefealgin.github.io/koltuk-yerlesim-sistemi/
 
@@ -63,11 +63,15 @@ HTML5 · CSS3 · Vanilla JavaScript · Supabase (Postgres + Realtime) · [qrcode
 
 ## Kurulum
 
-1. `supabase-setup.sql` dosyasındaki SQL'in **tamamını** Supabase projenin **SQL Editor**'ünde çalıştır — `events`/`event_sales`/`seat_holds` tablolarını, `purchase_seat`/`reserve_seat`/`release_seat_hold`/`redeem_discount_code`/`cancel_ticket` fonksiyonlarını, `accessible_seats` sütununu oluşturur. Script baştan sona tekrar tekrar çalıştırılabilir (idempotent), daha önce kısmen çalıştırdıysan sorun olmaz
+1. `supabase-setup.sql` dosyasındaki SQL'in **tamamını** Supabase projenin **SQL Editor**'ünde çalıştır — `events`/`event_sales`/`seat_holds`/`profiles` tablolarını, tüm RPC fonksiyonlarını (`purchase_seat`, `reserve_seat`, `release_seat_hold`, `redeem_discount_code`, `cancel_ticket`, `purchase_stadium_block`, `cancel_stadium_ticket`, `find_ticket_by_code`), RLS politikalarını ve gerekli sütunları oluşturur. Script baştan sona tekrar tekrar çalıştırılabilir (idempotent), daha önce kısmen çalıştırdıysan sorun olmaz
 2. Daha önceki bir sürümden geliyorsan yeni sütunlar için: `alter table events add column if not exists poster_url text;` ve `alter table events add column if not exists dynamic_pricing jsonb not null default '{"enabled":false,"threshold":80,"increase":10}'::jsonb;` (script'in tamamı zaten bunları içeriyor)
-3. Üç tabloda da (**events**, **event_sales**, **seat_holds**) **Row Level Security kapalı** olmalı (anon key ile okuma/yazma için) — açık gelirse: `alter table events disable row level security; alter table event_sales disable row level security; alter table seat_holds disable row level security;`
+3. **Row Level Security açık olmalı** (`events`, `event_sales`, `profiles`) — `supabase-setup.sql` bunu kendisi ayarlıyor (`alter table ... enable row level security` + politikalar). Eğer projede eski bir sürümden kalma "RLS kapalı" hâli varsa, script'i tekrar çalıştırman yeterli, kendi kendini düzeltir. `seat_holds` hassas veri taşımadığı için RLS'siz kalıyor.
 4. `script.js` içindeki `SUPABASE_URL` / `SUPABASE_KEY` değerlerini kendi projenle değiştir
-5. Şifreleri değiştirmek istersen `script.js` içindeki `SALES_PASSWORD` / `ADMIN_PASSWORD` sabitlerini düzenle (şu an: `satis123` / `yonetici123`)
+5. **Personel hesapları oluştur** (artık düz metin şifre yok, gerçek Supabase Auth hesabı gerekiyor):
+   1. Supabase panelinde **Authentication → Users → Add user** ile bir yönetici, bir de satış hesabı oluştur (e-posta + şifre, "Auto Confirm User" işaretli)
+   2. Her hesabın **User UID**'sini kopyala (Users listesinde görünür)
+   3. SQL Editor'de her biri için: `insert into profiles (id, role) values ('<UID>', 'admin');` (satış hesabı için `'sales'`)
+   4. `yonetici.html`'e o yönetici hesabıyla, `satis.html`'e o satış hesabıyla giriş yapılır — yanlış rollü bir hesapla girmeye çalışılırsa oturum otomatik kapatılır
 
 ## Çalıştırma
 `index.html` (müşteri), `satis.html` veya `yonetici.html` (personel) dosyasını bir tarayıcıda aç, ya da:
@@ -80,11 +84,11 @@ sonra `http://localhost:5175`, `http://localhost:5175/satis.html` veya `http://l
 
 ## Notlar
 - **Gerçek ödeme altyapısı yok** — "Kart/Nakit" seçimi sadece kayıt amaçlı bir etikettir, gerçek bir ödeme sağlayıcısı (iyzico, Stripe vb.) üzerinden para tahsil edilmez. Satın alma ekranında misafire bu açıkça belirtilir.
-- Şifreler client-side bir kontrol — kaynak koduna bakan biri şifreleri görebilir. Gerçek güvenlik gerekiyorsa Supabase Auth ile değiştirilmeli.
+- Personel girişi gerçek Supabase Auth (e-posta+şifre) + veritabanındaki RLS politikalarıyla korunuyor — `events`/`event_sales` tablolarına anon key ile doğrudan yazma/okuma artık mümkün değil, sadece giriş yapmış admin/sales hesapları ve güvenli (`security definer`) RPC'ler üzerinden.
 - `supabase.min.js` ve `qrcode.min.js` dosyaları, CDN'e bağımlı kalmamak için ilgili kütüphanelerin yerel birer kopyasıdır.
 - Eski tek-etkinlikli sürümden (`seats`, `sales` — sabit tek satırlı tablolar) geçiş yapıldı; bu iki tablo artık kullanılmıyor, istersen elle silebilirsin (`drop table if exists seats; drop table if exists sales;`).
 - Etkinlik silme kalıcıdır ve o etkinliğin satış verisini de (`event_sales`, cascade ile) siler — geri alınamaz.
-- Bilet kodları (`TKT-...`) kriptografik değil, gerçek kullanıcı doğrulaması (Supabase Auth) yok — sistem, kağıt bir bilet kadar güvenli: kodu bilen/QR'ı okutan biri check-in yapabilir.
+- Bilet kodları (`TKT-...`) `crypto.randomUUID()` ile üretilir ama misafirin kendisi için gerçek bir hesap/oturum yok — sistem, kağıt bir bilet kadar güvenli: kodu bilen/QR'ı okutan biri check-in yapabilir (bu, gerçek e-biletlerin de genel çalışma prensibidir).
 - Rezervasyon kilidi (`reserve_seat`) sadece **tekli** satın alma akışında çalışır; "Çoklu Seçim" (misafir grup bileti / personel toplu satışı) seçim sırasında koltuğu tutmaz — her koltuk için `purchase_seat` yine atomik çalıştığı için biri araya girip bir koltuğu alırsa sadece o koltuk başarısız olur, diğerleri etkilenmez.
 - Personelin "Çoklu Seçim"i tüm-diziyi-yeniden-yazan bir push kullanır (düşük risk, tek operatörlük personel senaryosu); misafirin çoklu seçimi ise her koltuk için ayrı ayrı atomik `purchase_seat` çağırır — ikisi farklı mekanizma, ikisi de kendi bağlamında güvenli.
 - İndirim kodu `redeem_discount_code` ile atomik olarak "kullanılır" (kullanım sayacı hemen artar) — kod uygulanıp satın alma tamamlanmazsa (kullanıcı vazgeçerse) o hak boşa gitmiş olur; hobi ölçekli bir uygulama için kabul edilebilir bir sınırlama.

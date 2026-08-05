@@ -32,10 +32,14 @@ alter table events add column if not exists tiers jsonb not null default '[]'::j
 
 -- Satis verisi (etkinlik basina): kimin hangi koltugu ne kadara, hangi
 -- odeme yontemiyle aldigi + bilet kodu/check-in durumu. Sadece Yonetici/
--- Satis rolu bu tabloyu toplu okur (client tarafinda kontrol edilir);
--- misafir sadece KENDI satin alma islemini yazar (purchase_seat()
--- fonksiyonu ile), asla baskasinin satirini okumaz. event_id, events.id
--- silindiginde otomatik silinsin diye cascade.
+-- Satis rolu bu tabloyu toplu okur -- ARTIK GERCEKTEN (bkz. asagidaki RLS),
+-- eskiden sadece client tarafinda kontrol ediliyordu ve anon key ile herkes
+-- bu tabloyu dogrudan okuyabiliyordu (guvenlik denetiminin en kritik
+-- bulgusu). Misafir kendi satin alma islemini purchase_seat()/
+-- purchase_stadium_block() ile yazar (security definer, RLS'i atlar);
+-- kendi biletini de find_ticket_by_code() ile bulur (tum tabloyu degil,
+-- sadece eslesen bileti dondurur). event_id, events.id silindiginde
+-- otomatik silinsin diye cascade.
 create table if not exists event_sales (
   event_id uuid primary key references events(id) on delete cascade,
   seat_sales jsonb not null default '[]'::jsonb,
@@ -45,15 +49,145 @@ create table if not exists event_sales (
 -- Tiers artik events tablosunda -- eski surumden kalma sutunu varsa temizle.
 alter table event_sales drop column if exists tiers;
 
--- Onemli: yeni Supabase projelerinde RLS varsayilan acik gelebilir.
--- Bu sistemde gercek kullanici girisi (Supabase Auth) yok, roller sadece
--- client tarafinda kontrol ediliyor -- bu yuzden RLS'i kapatmak gerekiyor.
-alter table events disable row level security;
-alter table event_sales disable row level security;
+-- ============================================================
+-- GERCEK ROL/YETKI SISTEMI (Supabase Auth + profiles)
+-- ============================================================
+-- Eskiden roller ("misafir"/"satis"/"yonetici") sadece client'ta bir
+-- sessionStorage degeriydi -- sunucu/veritabani bunu hic bilmiyordu, bu
+-- yuzden RLS kapaliydi ve anon key'i bilen HERKES tum satis verisini
+-- okuyabiliyor/degistirebiliyordu (guvenlik denetiminin #1 bulgusu).
+-- Artik personel gercek bir Supabase Auth hesabiyla giris yapiyor; bu
+-- tablo o hesabin (auth.users.id) hangi role sahip oldugunu tutuyor.
+-- Hesaplari Supabase Dashboard > Authentication > Users'tan elle
+-- olusturup buraya bir satir eklemen gerekiyor (bkz. README).
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  role text not null check (role in ('admin', 'sales')),
+  created_at timestamptz not null default now()
+);
+alter table profiles enable row level security;
+
+drop policy if exists "kendi profilini oku" on profiles;
+create policy "kendi profilini oku" on profiles
+  for select to authenticated
+  using (id = auth.uid());
+
+-- security definer + stable: RLS politikalarinin icinde guvenle cagrilabilir
+-- (kendi basina bir sonsuz donguye girmez, cunku profiles tablosunun RLS'ini
+-- degil dogrudan satiri okuyor).
+create or replace function current_staff_role()
+returns text
+language sql
+security definer
+stable
+as $$
+  select role from profiles where id = auth.uid();
+$$;
+grant execute on function current_staff_role() to anon, authenticated;
+
+-- ============================================================
+-- ROW LEVEL SECURITY: events + event_sales
+-- ============================================================
+-- events: fiyat listesi/doluluk herkese acik kalmali (misafir kendi bileti
+-- kendi alabilsin diye) -- SELECT anon+authenticated'a acik. Yazma islemleri
+-- (etkinlik olustur/sil/duzenle) artik SADECE gercekten giris yapmis
+-- personele acik.
+alter table events enable row level security;
+
+drop policy if exists "herkes okuyabilir" on events;
+create policy "herkes okuyabilir" on events
+  for select to anon, authenticated
+  using (true);
+
+drop policy if exists "personel guncelleyebilir" on events;
+create policy "personel guncelleyebilir" on events
+  for update to authenticated
+  using (current_staff_role() in ('admin', 'sales'));
+
+drop policy if exists "yonetici olusturabilir" on events;
+create policy "yonetici olusturabilir" on events
+  for insert to authenticated
+  with check (current_staff_role() = 'admin');
+
+drop policy if exists "yonetici silebilir" on events;
+create policy "yonetici silebilir" on events
+  for delete to authenticated
+  using (current_staff_role() = 'admin');
+
+revoke insert, update, delete on events from anon;
+grant select on events to anon;
+grant select, insert, update, delete on events to authenticated;
+
+-- event_sales: kimin ne aldigi artik SADECE giris yapmis personel tarafindan
+-- toplu okunabiliyor -- misafir artik bu tabloyu hic dogrudan sorgulamiyor,
+-- kendi bileti icin find_ticket_by_code() RPC'sini kullaniyor (bkz. asagi).
+alter table event_sales enable row level security;
+
+drop policy if exists "personel okuyabilir" on event_sales;
+create policy "personel okuyabilir" on event_sales
+  for select to authenticated
+  using (current_staff_role() in ('admin', 'sales'));
+
+drop policy if exists "personel guncelleyebilir (sales)" on event_sales;
+create policy "personel guncelleyebilir (sales)" on event_sales
+  for update to authenticated
+  using (current_staff_role() in ('admin', 'sales'));
+
+drop policy if exists "yonetici olusturabilir (sales)" on event_sales;
+create policy "yonetici olusturabilir (sales)" on event_sales
+  for insert to authenticated
+  with check (current_staff_role() = 'admin');
+
+revoke select, insert, update, delete on event_sales from anon;
+grant select, insert, update, delete on event_sales to authenticated;
 
 grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on events to anon, authenticated;
-grant select, insert, update, delete on event_sales to anon, authenticated;
+
+-- Misafirin kendi biletini bilet koduyla bulmasi ("Biletim Var") -- eskiden
+-- client TUM event_sales tablosunu ("select event_id, seat_sales" -- her
+-- etkinligin butun satis dizisi) indirip kendi tarayicisinda araniyordu; bu
+-- hem yukaridaki RLS'le artik zaten calismaz (anon'un event_sales SELECT
+-- yetkisi yok) hem de gereksiz yere agir bir veri transferiydi. Bu fonksiyon
+-- aramayi sunucuda yapip SADECE eslesen tek bileti donduruyor.
+create or replace function find_ticket_by_code(p_code text)
+returns table(
+  event_id uuid, seat_idx int, sale jsonb,
+  event_name text, event_venue_type text, event_cols int, event_rows int,
+  event_accessible_seats jsonb
+)
+language plpgsql
+security definer
+as $$
+declare
+  v_row record;
+  v_idx int;
+  v_entry jsonb;
+  v_candidates jsonb;
+  v_found jsonb;
+begin
+  for v_row in select es.event_id, es.seat_sales from event_sales es loop
+    for v_idx in 0 .. coalesce(jsonb_array_length(v_row.seat_sales), 1) - 1 loop
+      v_entry := v_row.seat_sales -> v_idx;
+      if v_entry is null or jsonb_typeof(v_entry) = 'null' then
+        continue;
+      end if;
+      v_candidates := case when jsonb_typeof(v_entry) = 'array' then v_entry else jsonb_build_array(v_entry) end;
+
+      select c into v_found from jsonb_array_elements(v_candidates) c
+      where c ->> 'ticketCode' = p_code limit 1;
+
+      if v_found is not null then
+        return query
+          select v_row.event_id, v_idx, v_found, e.name, e.venue_type, e.cols, e.rows, e.accessible_seats
+          from events e where e.id = v_row.event_id;
+        return;
+      end if;
+    end loop;
+  end loop;
+  return;
+end;
+$$;
+grant execute on function find_ticket_by_code(text) to anon, authenticated;
 
 -- ALTER PUBLICATION ... ADD TABLE'in IF NOT EXISTS'i yok -- daha once
 -- eklenmisse hata firlatip scriptin geri kalanini (asagidaki fonksiyon dahil)
@@ -145,6 +279,84 @@ end;
 $$;
 grant execute on function release_seat_hold(uuid, int, text) to anon, authenticated;
 
+-- Guvenlik denetimi: misafir satin alma RPC'lerine (purchase_seat,
+-- purchase_stadium_block) gelen p_sale/p_sales.price client'ta hesaplaniyor
+-- ve ONCEDEN hic dogrulanmiyordu -- tarayici konsolundan RPC'yi dogrudan
+-- cagirip fiyati 0/negatif/istenilen deger yapmak mumkundu. Bu fonksiyon,
+-- gonderilen fiyatin o etkinligin GERCEK tiers fiyatina (+ olasi yogun talep
+-- zammi tavani, - olasi en yuksek indirim kodu) gore mantikli bir aralikta
+-- olup olmadigini kontrol ediyor. Not: bu kontrol SADECE guest self-purchase
+-- RPC'lerini kapsiyor -- personelin toplu-yazan push mekanizmasi (bkz.
+-- pushSalesData) hala dogrudan tablo yazdigi icin bu RPC'nin disinda kalir
+-- (guvenlik denetimindeki RLS/anon-erisim bulgusuyla ayni kok neden).
+create or replace function validate_sale_price(p_event_id uuid, p_tier_id text, p_price numeric)
+returns boolean
+language plpgsql
+security definer
+as $$
+declare
+  v_tiers jsonb;
+  v_tier jsonb;
+  v_base numeric;
+  v_dyn jsonb;
+  v_surge_mult numeric := 1;
+  v_ceiling numeric;
+  v_codes jsonb;
+  v_code jsonb;
+  v_i int;
+  v_max_pct numeric := 0;
+  v_max_fixed numeric := 0;
+  v_floor numeric;
+begin
+  if p_price is null or p_price < 0 then
+    return false;
+  end if;
+
+  select tiers, dynamic_pricing, discount_codes
+    into v_tiers, v_dyn, v_codes
+    from events where id = p_event_id;
+
+  if v_tiers is null then
+    return false;
+  end if;
+
+  select t into v_tier from jsonb_array_elements(v_tiers) t where t ->> 'id' = p_tier_id limit 1;
+  if v_tier is null then
+    return false;
+  end if;
+
+  v_base := (v_tier ->> 'price')::numeric;
+
+  if v_dyn is not null and coalesce((v_dyn ->> 'enabled')::boolean, false) then
+    -- Guncel dolulugun esigi gecip gecmedigine bakmiyoruz (kucuk bir yaris
+    -- durumu yaratirdi) -- sadece "zam aktifse en fazla ne kadar olabilir"
+    -- tavanini hesapliyoruz, her zaman guvenli tarafta kaliyoruz.
+    v_surge_mult := 1 + coalesce((v_dyn ->> 'increase')::numeric, 0) / 100;
+  end if;
+  v_ceiling := round(v_base * v_surge_mult);
+
+  if v_codes is not null then
+    for v_i in 0 .. jsonb_array_length(v_codes) - 1 loop
+      v_code := v_codes -> v_i;
+      if (v_code ->> 'maxUses') is null
+         or coalesce((v_code ->> 'usedCount')::int, 0) < (v_code ->> 'maxUses')::int then
+        if v_code ->> 'type' = 'percent' then
+          v_max_pct := greatest(v_max_pct, coalesce((v_code ->> 'value')::numeric, 0));
+        else
+          v_max_fixed := greatest(v_max_fixed, coalesce((v_code ->> 'value')::numeric, 0));
+        end if;
+      end if;
+    end loop;
+  end if;
+
+  v_floor := greatest(0, round(v_ceiling * (1 - v_max_pct / 100)) - v_max_fixed);
+
+  -- +-1 yuvarlama toleransi (client Math.round kullaniyor).
+  return p_price >= v_floor - 1 and p_price <= v_ceiling + 1;
+end;
+$$;
+grant execute on function validate_sale_price(uuid, text, numeric) to anon, authenticated;
+
 -- Tek bir koltugu atomik olarak "satin al" -- misafirin kendi bileti kendi
 -- almasi icin kullanilir. Iki farkli misafir ayni bos koltuga ayni anda
 -- tiklarsa WHERE kosulundaki "hala empty mi" kontrolu sayesinde sadece biri
@@ -159,6 +371,10 @@ language plpgsql
 security definer
 as $$
 begin
+  if not validate_sale_price(p_event_id, p_sale ->> 'tier', (p_sale ->> 'price')::numeric) then
+    raise exception 'INVALID_PRICE';
+  end if;
+
   delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and expires_at < now();
 
   if exists (
@@ -213,6 +429,22 @@ alter table events add column if not exists dynamic_pricing jsonb not null
 -- Koltugun dolu/bos durumundan bagimsiz, sabit bir fiziksel ozellik.
 alter table events add column if not exists accessible_seats jsonb not null
   default '[]'::jsonb;
+
+-- ============================================================
+-- ETKINLIK NOTU (etkinlik basina)
+-- ============================================================
+-- note: misafirlere gosterilen serbest metin (ornegin "Kapilar 19:00'da
+-- acilir", festival kurallari, vb.) -- hassas degil, poster_url gibi herkese
+-- acik.
+alter table events add column if not exists note text;
+
+-- ============================================================
+-- GENEL ETKINLIK: UCRETSIZ/BILETSIZ TEK GIRIS HAVUZU (etkinlik basina)
+-- ============================================================
+-- general_capacity: sadece venue_type='genel' etkinliklerde kullanilir --
+-- koltuk numarasi/bilet turu/fiyat yok, tek bir kapasiteli havuz (bkz.
+-- joinGeneralEvent). seat_states[0] o havuza KATILAN kisi sayisidir.
+alter table events add column if not exists general_capacity int not null default 500;
 
 -- Bir indirim kodunu atomik olarak "kullan": kod yoksa CODE_NOT_FOUND,
 -- kullanim limiti dolduysa CODE_EXHAUSTED hatasi verir; gecerliyse
@@ -338,6 +570,142 @@ begin
 end;
 $$;
 grant execute on function cancel_ticket(uuid, int, text) to anon, authenticated;
+
+-- ============================================================
+-- FUTBOL SAHASI: KAPASITELI BLOK SATISI
+-- ============================================================
+-- Diger venue turlerinde "bir koltuk = bir alici" ama gercek bir stadyum
+-- boyle calismiyor: "Premium 1" gibi bir blok tek kisilik degil, N kisilik.
+-- Bu yuzden futbol bloklarinda iki alan farkli anlama geliyor:
+--   events.seat_states[idx]      -> TAM SAYI: o bloktan simdiye kadar
+--                                    satilan bilet sayisi (0..capacity)
+--   event_sales.seat_sales[idx]  -> DIZI: o bloktaki her bilet kendi
+--                                    kaydiyla (alici, cinsiyet, kod, odeme)
+-- p_capacity client'tan geliyor (STADIUM_BLOCKS'ta sabit, sir degil) --
+-- ayni p_gender'in purchase_seat'e client'tan gelmesi gibi.
+create or replace function purchase_stadium_block(
+  p_event_id uuid, p_idx int, p_quantity int, p_capacity int, p_sales jsonb, p_token text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_i int;
+  v_sale jsonb;
+begin
+  if p_quantity is null or p_quantity < 1 then
+    raise exception 'INVALID_QUANTITY';
+  end if;
+
+  -- Genel Etkinlik'in ucretsiz havuzunda p_sales bos dizi gelir (bkz.
+  -- joinGeneralEvent) -- dongu hicbir sey yapmaz, gecerli. Futbol
+  -- bloklarinda her satis kaydinin fiyati gercek tiers fiyatina gore
+  -- dogrulaniyor (bkz. validate_sale_price).
+  if p_sales is not null and jsonb_typeof(p_sales) = 'array' then
+    for v_i in 0 .. jsonb_array_length(p_sales) - 1 loop
+      v_sale := p_sales -> v_i;
+      if not validate_sale_price(p_event_id, v_sale ->> 'tier', (v_sale ->> 'price')::numeric) then
+        raise exception 'INVALID_PRICE';
+      end if;
+    end loop;
+  end if;
+
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and expires_at < now();
+  if exists (
+    select 1 from seat_holds
+    where event_id = p_event_id and seat_idx = p_idx and (p_token is null or hold_token <> p_token)
+  ) then
+    raise exception 'SEAT_HELD';
+  end if;
+
+  -- Atomik kapasite kontrolu: WHERE kosulu UPDATE ile AYNI satirda
+  -- degerlendirildigi icin iki alici ayni anda gelirse biri kazanir,
+  -- digeri (guncel sayiyi gormeden) CAPACITY_EXCEEDED alir -- purchase_seat'in
+  -- "hala empty mi" deseninin kapasiteli versiyonu.
+  update events
+  set seat_states = jsonb_set(
+        seat_states, array[p_idx::text],
+        to_jsonb(coalesce((seat_states ->> p_idx)::int, 0) + p_quantity)
+      ),
+      updated_at = now()
+  where id = p_event_id
+    and coalesce((seat_states ->> p_idx)::int, 0) + p_quantity <= p_capacity;
+
+  if not found then
+    raise exception 'CAPACITY_EXCEEDED';
+  end if;
+
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx;
+
+  -- coalesce(x, '[]') sadece x SQL NULL ise devreye girer -- ama bos bir
+  -- havuz burada JSONB NULL olarak saklanmis olabilir (bkz. event_sales
+  -- insert'i / eski veri gocleri), ki bu SQL NULL DEGILDIR. O durumda
+  -- coalesce hicbir sey yapmaz ve 'null'::jsonb || p_sales, sol taraf dizi
+  -- olmadigindan onu [null] olarak sarip sonuca bastan bir null sokusturur
+  -- (Postgres'in jsonb || davranisi). jsonb_typeof kontroluyle GERCEKTEN
+  -- dizi olmayan her seyi (SQL NULL, JSONB null, yanlislikla baska bir tip)
+  -- once '[]'e ceviriyoruz.
+  update event_sales
+  set seat_sales = jsonb_set(
+        seat_sales, array[p_idx::text],
+        (case when jsonb_typeof(seat_sales -> p_idx) = 'array' then seat_sales -> p_idx else '[]'::jsonb end) || p_sales
+      ),
+      updated_at = now()
+  where event_id = p_event_id;
+end;
+$$;
+grant execute on function purchase_stadium_block(uuid, int, int, int, jsonb, text) to anon, authenticated;
+
+-- Kapasiteli blokta TEK bir bileti iptal eder (dizideki eslesen ticketCode).
+-- Blok satis sayaci (seat_states[idx]) 1 azalir; diger biletler etkilenmez.
+create or replace function cancel_stadium_ticket(p_event_id uuid, p_idx int, p_ticket_code text)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_tickets jsonb;
+  v_i int;
+  v_found_i int := null;
+begin
+  select seat_sales -> p_idx into v_tickets
+  from event_sales where event_id = p_event_id;
+
+  if v_tickets is null or jsonb_typeof(v_tickets) <> 'array' then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  for v_i in 0 .. jsonb_array_length(v_tickets) - 1 loop
+    if (v_tickets -> v_i ->> 'ticketCode') = p_ticket_code then
+      v_found_i := v_i;
+      exit;
+    end if;
+  end loop;
+
+  if v_found_i is null then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  if coalesce((v_tickets -> v_found_i ->> 'checkedIn')::boolean, false) then
+    raise exception 'ALREADY_CHECKED_IN';
+  end if;
+
+  update event_sales
+  set seat_sales = jsonb_set(seat_sales, array[p_idx::text], v_tickets - v_found_i),
+      updated_at = now()
+  where event_id = p_event_id;
+
+  update events
+  set seat_states = jsonb_set(
+        seat_states, array[p_idx::text],
+        to_jsonb(greatest(0, coalesce((seat_states ->> p_idx)::int, 1) - 1))
+      ),
+      updated_at = now()
+  where id = p_event_id;
+end;
+$$;
+grant execute on function cancel_stadium_ticket(uuid, int, text) to anon, authenticated;
 
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra

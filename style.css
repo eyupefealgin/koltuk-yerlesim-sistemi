@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   Koltuk Yerleşim Sistemi — "Editoryal Karanlık" tema
+   BiletHub — "Editoryal Karanlık" tema
    Kısıtlama ve tipografiden gelen premium: ince tek-piksel çizgiler,
    düz dolgular (gradyan/parıltı yok), serif başlık + sade gövde fontu,
    tek bir vurgu rengi (bordo). Bu, önceki "Gece Prizması" (mor+kehribar,
@@ -8,7 +8,13 @@
    aşırı-yuvarlak biçim dilinden geliyordu.
    ═══════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+/* Font linki HTML <head>'de (bkz. index.html vb.) — burada @import ile
+   İKİNCİ bir istek olarak tekrar çekmiyoruz. @import ayrıca CSSOM
+   oluşturulana kadar keşfedilmediği için (HTML <link>'e göre bir tur
+   gecikme) performans açısından da daha kötüydü — bkz. güvenlik/
+   optimizasyon denetimi notları. Sadece ihtiyaç olan ağırlıklar
+   (400/500/600/700/800, italik yok — kullanılmıyor) çekiliyor.
+   Fraunces:wght@400;500;600;700 + Outfit:wght@400;500;600;700;800 */
 
 :root{
   /* Zemin — sıcak neredeyse-siyah (mor eğilim yok, kağıt/mürekkep hissi) */
@@ -209,10 +215,12 @@ input{ font-family: inherit; }
 
 .login-password-row{
   display: flex;
+  flex-direction: column;
   gap: 10px;
   margin-top: 18px;
 }
 .login-password-row[hidden]{ display: none; }
+.login-password-inline{ display: flex; gap: 10px; }
 .login-password-row input{
   flex: 1;
   border: 1px solid var(--border);
@@ -592,6 +600,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 
 .legend{ display: flex; gap: 10px; flex-wrap: wrap; }
+.legend[hidden]{ display: none; }
 
 .filter-chip {
   display: inline-flex;
@@ -617,6 +626,12 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   color: #fff;
 }
 .filter-chip.is-active .swatch { border-color: rgba(255, 255, 255, 0.6); }
+/* .filter-chip kendi display: inline-flex kuralını tanımladığı için
+   tarayıcının varsayılan [hidden]{display:none} kuralını (UA-origin,
+   eşit önem/özgüllükte author kuralına kaybediyor) burada AÇIKÇA ezmemiz
+   gerekiyor — yoksa element.hidden=true JS'te hiçbir görsel etki yapmaz
+   (bkz. futbol modunda Erkek/Kadın çiplerinin gizlenmesi). */
+.filter-chip[hidden]{ display: none; }
 
 .swatch.sold-swatch { background: var(--gold); border-color: var(--gold); }
 
@@ -677,6 +692,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   transition: border-color .2s ease, background .2s ease;
 }
 .stat:hover{ border-color: var(--border-hover); background: var(--tint-2); }
+.stat[hidden]{ display: none; }
 .stat strong{ font-size: 1.3rem; font-weight: 800; color: var(--text-bright); line-height: 1.2; }
 .stat span{
   font-size: .72rem;
@@ -783,6 +799,20 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-left: 2px solid var(--gold);
 }
 .stadium-note[hidden]{ display: none; }
+
+/* Etkinlik notu — herkese açık (misafir dahil), admin-only ayarlar panelinin
+   ÜSTÜNDE, sayfaya girer girmez görünsün diye (bkz. eventNoteDisplay). */
+.event-note-display{
+  font-size: .9rem;
+  color: var(--text);
+  margin: 0 0 20px;
+  padding: 14px 18px;
+  background: var(--gold-subtle);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--gold);
+  white-space: pre-wrap;
+}
+.event-note-display[hidden]{ display: none; }
 
 /* ═══════════════════════════════════════
    EVENT LIST VIEW
@@ -939,6 +969,13 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   border-bottom: 1px solid var(--border);
 }
 .event-card-date{ font-size: .85rem; color: var(--text-secondary); padding: 12px 22px 0; }
+.event-card-note{
+  font-size: .8rem;
+  color: var(--gold-dim);
+  padding: 8px 22px 0;
+  white-space: pre-wrap;
+}
+.event-card-note[hidden]{ display: none; }
 .event-card-occupancy{ display: flex; flex-direction: column; gap: 6px; padding: 0 22px; }
 .event-card-occupancy span{ font-size: .78rem; color: var(--text-muted); }
 .event-card-actions{ display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 22px 22px; margin-top: 4px; }
@@ -960,6 +997,15 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   transition: border-color .2s ease, background .2s ease;
 }
 .field select:focus{ border-color: var(--gold); background: var(--tint-2); outline: none; }
+
+/* Açılan <select> listesi tarayıcının kendi (genelde beyaz) popup arkaplanını
+   kullanıyor — var(--text) neredeyse beyaz olduğundan üzerine yazınca
+   görünmez oluyordu. option'a düz/opak bir arkaplan vererek popup'ı da koyu
+   temaya uyduruyoruz (rgba arkaplanlar popup'ta düzgün render olmuyor). */
+select option{
+  background: var(--surface-raised);
+  color: var(--text);
+}
 
 /* ═══════════════════════════════════════
    BULK SELECTION TOOLBAR
@@ -1119,9 +1165,9 @@ body[data-role="guest"] .editor-only{ display: none !important; }
    STADIUM MODE
    ═══════════════════════════════════════ */
 .seat-grid.stadium-mode{
-  grid-template-columns: repeat(10, minmax(52px, 68px));
-  grid-template-rows: repeat(8, minmax(48px, auto));
-  gap: 6px;
+  grid-template-columns: repeat(10, minmax(92px, 124px));
+  grid-template-rows: repeat(8, minmax(80px, auto));
+  gap: 10px;
 }
 
 .stadium-field{
@@ -1154,50 +1200,69 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .stadium-block{
   width: auto; height: auto; min-height: 100%;
   border-radius: var(--radius-xs);
-  font-size: .66rem; line-height: 1.25; padding: 4px 3px;
+  font-size: .98rem; line-height: 1.35; padding: 8px 6px;
   white-space: normal; text-align: center;
+  position: relative;
+  overflow: hidden;
   /* Renk artık cinsiyete değil fiyat katmanına göre (satır içi stil,
      bkz. renderStadiumGrid) — o katman renklerinin hepsi beyaz metinle
      4.5:1+ verecek şekilde seçildi, durum sınıfından (erkek/kadın/boş)
      bağımsız olarak beyaz sabitleniyor. */
   color: #fff !important;
 }
-.stadium-block .seat-num{ font-weight: 700; }
+.stadium-block .seat-num{ font-weight: 700; position: relative; z-index: 1; }
 
-/* Dolu blok kaplaması — misafire de görünür olmalı. "Satılan" rozeti/halkası
-   seatSales verisine dayanıyor ve bu veri gizlilik nedeniyle misafire hiç
-   gönderilmiyor (bkz. event_sales erişim kısıtı) — o yüzden misafir hiçbir
-   bloğun dolu olduğunu göremiyordu. Bu kaplama yerine seatStates'e (erkek/
-   kadın sınıfı, herkese gönderiliyor) bakıyor, satır içi katman renginin
-   ÜSTÜNE bir katman olarak biniyor (background değil, ayrı bir efekt). */
-.stadium-block.male,
-.stadium-block.female{
-  position: relative;
+/* Kısmen dolu blok (hasAny && !full) — ne tamamen boş ne tamamen dolu,
+   kesikli bir çerçeveyle ayırt ediliyor. Tamamen dolu bloklar zaten genel
+   .seat.sold halkasını (box-shadow) alıyor, bkz. style.css üstteki kural. */
+.stadium-block.partial{
+  outline: 2px dashed rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
 }
-.stadium-block.male::before,
-.stadium-block.female::before{
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(10, 8, 6, 0.62);
-  pointer-events: none;
-}
-.stadium-block.male .seat-num,
-.stadium-block.female .seat-num{
+
+/* Blok başına satılan/kapasite oranı — hem sayısal (fraction) hem görsel
+   (fill bar) olarak. Bu veri seatStates'ten geliyor (herkese gönderiliyor,
+   bkz. blockSoldCount), o yüzden misafir de doluluğu görebiliyor. */
+.stadium-block-fraction{
+  display: block;
+  font-size: .64em;
+  font-weight: 700;
+  letter-spacing: .02em;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
   position: relative;
   z-index: 1;
+  opacity: 0.92;
 }
-.stadium-block.male .seat-num::after,
-.stadium-block.female .seat-num::after{
-  content: 'DOLU';
-  display: block;
-  font-size: .58em;
-  font-weight: 800;
-  letter-spacing: .04em;
-  margin-top: 2px;
-  color: #fff;
+.stadium-block-fill{
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
 }
+
+/* Genel Etkinlik: koltuk numarası/sabit stadyum şeması yok — her bilet türü
+   kendi kapasiteli havuzu olarak dikey bir liste hâlinde gösterilir (bkz.
+   renderGeneralGrid). .stadium-block'un aynı görsel dilini (kesir/dolgu
+   çubuğu/durum renkleri) tam genişlikte bir kart olarak yeniden kullanır. */
+.seat-grid.general-mode{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.seat-grid.general-mode .stadium-block{
+  width: 100%;
+  min-height: 64px;
+  font-size: 1rem;
+  padding: 12px 16px;
+  background: var(--tint-3, rgba(255,255,255,0.06));
+}
+.seat-grid.general-mode .stadium-block.sold{ background: var(--gold-subtle); }
 
 /* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
 .stadium-legend{
@@ -1609,10 +1674,10 @@ body[data-role="guest"] .editor-only{ display: none !important; }
   .bulk-toolbar{ justify-content: center; }
 
   .seat-grid.stadium-mode{
-    grid-template-columns: repeat(10, minmax(44px, 52px));
-    grid-template-rows: repeat(8, minmax(38px, auto));
+    grid-template-columns: repeat(10, minmax(58px, 68px));
+    grid-template-rows: repeat(8, minmax(50px, auto));
   }
-  .stadium-block{ font-size: .56rem; padding: 3px 1px; }
+  .stadium-block{ font-size: .68rem; padding: 4px 2px; }
 
   .poster-row input{ flex: 1 1 100%; }
   .poster-row .btn{ flex: 1 1 100%; }

@@ -15,6 +15,7 @@ let pushTimerVenueType = null;
 let pushTimerSalesData = null;
 let pushTimerTiers = null;
 let pushTimerAccessibleSeats = null;
+let pushTimerGeneralCapacity = null;
 
 function clearPushTimers(){
   clearTimeout(pushTimerSeatStates);
@@ -23,6 +24,7 @@ function clearPushTimers(){
   clearTimeout(pushTimerSalesData);
   clearTimeout(pushTimerTiers);
   clearTimeout(pushTimerAccessibleSeats);
+  clearTimeout(pushTimerGeneralCapacity);
 }
 
 // Ticket tiers are per-event (stored in events.tiers — public, since a price
@@ -65,14 +67,32 @@ const STADIUM_TIER_COLORS = {
   'kuzey-kale-arkasi-alt': '#A76526',   // #C97A2E beyazla 3.33 idi, 4.63'e düşürüldü
   'kuzey-kale-arkasi-ust': '#96591F',
 };
+// Her blok tek bir bilete değil, N kişilik bir havuza karşılık geliyor —
+// gerçek bir stadyumda "Premium" bölümü tek koltuk değildir. VIP katmanları
+// küçük/pahalı, genel tribün blokları büyük/ucuz tutuldu. Toplam ~6000 kişilik
+// bir stadyum (40 blok × bu kapasiteler).
+const STADIUM_TIER_CAPACITY = {
+  'premium': 40,
+  'gold-vip': 40,
+  'classic-vip': 60,
+  'numarali-ust-vip': 60,
+  'dogu-maraton-alt': 250,
+  'dogu-maraton-ust': 200,
+  'guney-alt': 180,
+  'guney-ust': 150,
+  'kuzey-kale-arkasi-alt': 180,
+  'kuzey-kale-arkasi-ust': 150,
+};
 
-// Unique-enough code for a ticket's QR + check-in lookup. Not cryptographic —
-// this app has no real auth, so it's already only as secure as "don't share
-// your ticket code," same trust level as a printed paper ticket.
+// Bilet QR/check-in kodu — crypto.randomUUID() ile üretiliyor (122 bit
+// rastgelelik, tarayıcının kriptografik RNG'si). Önceki sürüm Date.now() +
+// Math.random() kullanıyordu: zaman damgası tahmin edilebilir (satış saati
+// genelde bilinir) ve Math.random() kriptografik değil — ikisi birleşince
+// bir bilet kodu, kabaca bilinen bir zaman aralığında brute-force ile
+// bulunabilirdi (bkz. güvenlik denetimi). randomUUID zaten her tarayıcıda
+// var (crypto API), fallback'e gerek yok.
 function generateTicketCode(){
-  const time = Date.now().toString(36).toUpperCase();
-  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `TKT-${time}-${rand}`;
+  return `TKT-${crypto.randomUUID().toUpperCase()}`;
 }
 
 const VENUE_TYPES = {
@@ -88,14 +108,44 @@ function isStadiumMode(){
   return venueType === 'futbol';
 }
 
+// "Havuzlu" mod: koltuk numarası yok, kapasiteli bir havuza karşılık gelir —
+// seatStates[idx] satılan/katılan SAYI, seatSales[idx] bilet DİZİSİ olur
+// (bkz. blockSoldCount/salesAt). Futbolda sabit 40 blok var (fiyatlı, biletli);
+// Genel Etkinlik'te ise tek bir ÜCRETSİZ/biletsiz giriş havuzu var (bkz.
+// poolBlocks/joinGeneralEvent) — bilet türü/fiyat kavramı hiç yok, sadece
+// toplam kapasite ve kaç kişinin katıldığı takip ediliyor.
+function isPooledMode(){
+  return venueType === 'futbol' || venueType === 'genel';
+}
+
+// Genel Etkinlik oluşturulunca ya da bu türe ilk geçilince varsayılan
+// kapasite — admin sonradan kapasite alanından değiştirebilir.
+const DEFAULT_GENERAL_CAPACITY = 500;
+let GENERAL_CAPACITY = DEFAULT_GENERAL_CAPACITY; // geçerli etkinliğin kapasitesi (events.general_capacity)
+
+// Havuzlu moddaki "blok" listesi: futbolda sabit stadyum şeması (fiyatlı,
+// bilet türüne göre), Genel Etkinlik'te ise tek bir ücretsiz giriş havuzu.
+// idx bazlı tüm paylaşılan kod (renderSeatVisual, seatAriaLabel, vb.)
+// STADIUM_BLOCKS yerine bunu okur.
+function poolBlocks(){
+  if(isStadiumMode()) return STADIUM_BLOCKS;
+  if(venueType === 'genel'){
+    return [{ label: 'Genel Giriş', tier: null, capacity: GENERAL_CAPACITY }];
+  }
+  return [];
+}
+
 // Fixed stadium seating map for Futbol Sahası: bir saha, çevresinde gerçek
 // stadyum bilet şemalarındaki gibi FİYAT KATMANINA göre renklenen tribün
 // blokları (bkz. DEFAULT_STADIUM_TIERS/STADIUM_TIER_COLORS) — orijinal
-// düzen, belirli bir gerçek stadyumun kopyası değil. Her blok, numaralı bir
-// koltuk gibi seatStates/seatSales'te tek bir giriş; satış/senkron/veri
-// azaltma hattının tamamı değişmeden kullanılıyor. Cinsiyet hâlâ satın alma
-// adımında soruluyor, sadece artık blok rengini belirlemiyor (o iş fiyat
-// katmanının).
+// düzen, belirli bir gerçek stadyumun kopyası değil.
+//
+// ÖNEMLİ: her blok TEK bir bilete değil, capacity kişilik bir HAVUZA karşılık
+// gelir — gerçek bir stadyumda "Premium" bölümü tek koltuk değildir. Bu yüzden
+// bu bloklar diğer venue türlerindeki koltuklardan farklı bir veri şekli
+// kullanır: seatStates[idx] o bloktan satılan bilet SAYISI (tam sayı),
+// seatSales[idx] ise her biletin kendi kaydını taşıyan bir DİZİ (bkz.
+// purchase_stadium_block/cancel_stadium_ticket, salesAt() yardımcı fonksiyonu).
 //
 // Grid 10 sütun × 8 satır (1-2 = sol katman, 3-8 = saha, 9-10 = sağ katman;
 // satırlarda da aynı mantık).
@@ -113,32 +163,31 @@ function buildStadiumBlocks(){
   ];
   topTierGroups.forEach(g => {
     const label = DEFAULT_STADIUM_TIERS.find(t => t.id === g.tier).label;
-    g.cols.forEach((c, i) => blocks.push({ label: `${label} ${i + 1}`, col: `${c} / ${c + 1}`, row: g.row, tier: g.tier }));
+    g.cols.forEach((c, i) => blocks.push({ label: `${label} ${i + 1}`, col: `${c} / ${c + 1}`, row: g.row, tier: g.tier, capacity: STADIUM_TIER_CAPACITY[g.tier] }));
   });
 
   // ALT kenar (eski "Batı") — 2 fiyat katmanı, 6'şar blok.
   const fieldCols = [3, 4, 5, 6, 7, 8];
   const bottomAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'dogu-maraton-alt').label;
   const bottomUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'dogu-maraton-ust').label;
-  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomAltLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '7 / 8', tier: 'dogu-maraton-alt' }));
-  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomUstLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '8 / 9', tier: 'dogu-maraton-ust' }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomAltLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '7 / 8', tier: 'dogu-maraton-alt', capacity: STADIUM_TIER_CAPACITY['dogu-maraton-alt'] }));
+  fieldCols.forEach((c, i) => blocks.push({ label: `${bottomUstLabel} ${i + 1}`, col: `${c} / ${c + 1}`, row: '8 / 9', tier: 'dogu-maraton-ust', capacity: STADIUM_TIER_CAPACITY['dogu-maraton-ust'] }));
 
   const fieldRows = [3, 4, 5, 6];
   const leftAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'guney-alt').label;
   const leftUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'guney-ust').label;
-  fieldRows.forEach((r, i) => blocks.push({ label: `${leftAltLabel} ${i + 1}`, col: '2 / 3', row: `${r} / ${r + 1}`, tier: 'guney-alt' }));
-  fieldRows.forEach((r, i) => blocks.push({ label: `${leftUstLabel} ${i + 1}`, col: '1 / 2', row: `${r} / ${r + 1}`, tier: 'guney-ust' }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${leftAltLabel} ${i + 1}`, col: '2 / 3', row: `${r} / ${r + 1}`, tier: 'guney-alt', capacity: STADIUM_TIER_CAPACITY['guney-alt'] }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${leftUstLabel} ${i + 1}`, col: '1 / 2', row: `${r} / ${r + 1}`, tier: 'guney-ust', capacity: STADIUM_TIER_CAPACITY['guney-ust'] }));
 
   const rightAltLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'kuzey-kale-arkasi-alt').label;
   const rightUstLabel = DEFAULT_STADIUM_TIERS.find(t => t.id === 'kuzey-kale-arkasi-ust').label;
-  fieldRows.forEach((r, i) => blocks.push({ label: `${rightAltLabel} ${i + 1}`, col: '9 / 10', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-alt' }));
-  fieldRows.forEach((r, i) => blocks.push({ label: `${rightUstLabel} ${i + 1}`, col: '10 / 11', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-ust' }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${rightAltLabel} ${i + 1}`, col: '9 / 10', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-alt', capacity: STADIUM_TIER_CAPACITY['kuzey-kale-arkasi-alt'] }));
+  fieldRows.forEach((r, i) => blocks.push({ label: `${rightUstLabel} ${i + 1}`, col: '10 / 11', row: `${r} / ${r + 1}`, tier: 'kuzey-kale-arkasi-ust', capacity: STADIUM_TIER_CAPACITY['kuzey-kale-arkasi-ust'] }));
 
   return blocks;
 }
 const STADIUM_BLOCKS = buildStadiumBlocks();
 
-const ROLE_SESSION_KEY = 'koltukYerlesim.role';
 const EVENT_SESSION_KEY = 'koltukYerlesim.eventId';
 const HOLD_TOKEN_KEY = 'koltukYerlesim.holdToken';
 const HOLD_TTL_SECONDS = 300; // 5 dakika — reserve_seat()'in varsayılanıyla aynı
@@ -155,18 +204,19 @@ function getHoldToken(){
   return token;
 }
 const holdToken = getHoldToken();
-// Client-side gate only — not real security, just separates the three
-// experiences (misafir/satış/yönetici). Anyone can read these in the source.
-const SALES_PASSWORD = 'satis123';
-const ADMIN_PASSWORD = 'yonetici123';
+// Gerçek kimlik doğrulama: Supabase Auth (e-posta+şifre) + profiles tablosu
+// (bkz. supabase-setup.sql). Eskiden burada düz metin şifreler vardı
+// (SALES_PASSWORD/ADMIN_PASSWORD) — kaynak koduna bakan herkes görebiliyordu
+// ve veritabani bunun farkinda degildi (RLS kapaliydi, guvenlik denetiminin
+// #1 bulgusu). Artik personel gercek bir hesapla giris yapiyor, rol
+// veritabanindaki profiles tablosundan okunuyor.
 let pendingLoginRole = null; // 'sales' | 'admin', while the password row is showing
 
 const loginGate = document.getElementById('loginGate');
 const appRoot = document.getElementById('appRoot');
 const guestLoginBtn = document.getElementById('guestLoginBtn');
-const salesLoginBtn = document.getElementById('salesLoginBtn');
-const adminLoginBtn = document.getElementById('adminLoginBtn');
 const passwordRow = document.getElementById('passwordRow');
+const emailInput = document.getElementById('emailInput');
 const passwordInput = document.getElementById('passwordInput');
 const passwordSubmit = document.getElementById('passwordSubmit');
 const loginError = document.getElementById('loginError');
@@ -223,6 +273,7 @@ const screenAccentEl = document.getElementById('screenAccent');
 const tierListEl = document.getElementById('tierList');
 const newTierNameInput = document.getElementById('newTierName');
 const newTierPriceInput = document.getElementById('newTierPrice');
+const revenuePanel = document.getElementById('revenuePanel');
 const revenueBreakdownEl = document.getElementById('revenueBreakdown');
 const paymentBreakdownEl = document.getElementById('paymentBreakdown');
 
@@ -238,7 +289,12 @@ const bulkCountEl = document.getElementById('bulkCount');
 const seatModalOverlay = document.getElementById('seatModalOverlay');
 const seatModalTitle = document.getElementById('seatModalTitle');
 const seatModalClose = document.getElementById('seatModalClose');
+const stadiumBlockCapacityInfoEl = document.getElementById('stadiumBlockCapacityInfo');
 const modalTierButtonsEl = document.getElementById('modalTierButtons');
+const stadiumQuantityInput = document.getElementById('stadiumQuantityInput');
+const stadiumQuantityInfoEl = document.getElementById('stadiumQuantityInfo');
+const stadiumQuantityPriceEl = document.getElementById('stadiumQuantityPrice');
+const stadiumQuantityContinueBtn = document.getElementById('stadiumQuantityContinueBtn');
 const modalInfoTextEl = document.getElementById('modalInfoText');
 const modalClearSeatBtn = document.getElementById('modalClearSeatBtn');
 const viewTicketBtn = document.getElementById('viewTicketBtn');
@@ -267,6 +323,21 @@ const addDiscountBtn = document.getElementById('addDiscountBtn');
 const eventPosterInput = document.getElementById('eventPosterInput');
 const savePosterBtn = document.getElementById('savePosterBtn');
 const posterPreview = document.getElementById('posterPreview');
+
+// Etkinlik notu (Yönetici düzenler, herkes görür — bkz. eventNoteDisplay)
+const eventNoteInput = document.getElementById('eventNoteInput');
+const saveNoteBtn = document.getElementById('saveNoteBtn');
+const eventNoteDisplay = document.getElementById('eventNoteDisplay');
+
+// Genel Etkinlik: tek ücretsiz giriş havuzunun kapasitesi + bilet türü/
+// fiyat (tierPanelSection) ve indirim kodu (discountPanelSection) panelleri
+// — ikisi de fiyatlı bilet varsayar, Genel Etkinlik'te anlamsız (bkz.
+// renderVenueAccent).
+const generalCapacitySection = document.getElementById('generalCapacitySection');
+const generalCapacityInput = document.getElementById('generalCapacityInput');
+const saveGeneralCapacityBtn = document.getElementById('saveGeneralCapacityBtn');
+const tierPanelSection = document.getElementById('tierPanelSection');
+const discountPanelSection = document.getElementById('discountPanelSection');
 
 // Dinamik fiyatlandırma (Yönetici)
 const dynEnabled = document.getElementById('dynEnabled');
@@ -330,8 +401,12 @@ let modalHeldIdx = null;       // reserve_seat başarılı olduysa tutulan koltu
 let holdCountdownInterval = null;
 let holdExpiresAt = null;
 let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
+let stadiumTier = null;              // blok için sabit fiyat katmanı (STADIUM_BLOCKS[idx].tier)
+let stadiumRemainingCapacity = 0;    // modal açıldığı andaki kalan yer sayısı
+let stadiumQuantity = 1;             // kullanıcının seçtiği bilet adedi
 let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.discount_codes)
 let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
+let EVENT_NOTE = null;         // geçerli etkinliğin notu (events.note) — herkese açık
 const DEFAULT_DYNAMIC = { enabled: false, threshold: 80, increase: 10 };
 let DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC }; // events.dynamic_pricing
 
@@ -378,13 +453,47 @@ function renderVenueAccent(){
     c.classList.toggle('is-active', c.dataset.venue === venueType);
   });
 
-  // Stadium mode replaces the cols/rows grid + accent bar with a fixed
-  // stadium diagram (pitch + tribün blocks), so the layout controls that
-  // only make sense for a rectangular grid are hidden in this mode.
+  // Havuzlu modlar (futbol + Genel Etkinlik) koltuk numarası kullanmadığı
+  // için sütun/satır ayarları anlamsız — o kontroller gizleniyor.
   const stadium = isStadiumMode();
-  layoutControlsEl.hidden = stadium;
-  stadiumNoteEl.hidden = !stadium;
-  screenAccentEl.hidden = stadium;
+  const pooled = isPooledMode();
+  const genel = venueType === 'genel';
+  layoutControlsEl.hidden = pooled;
+  stadiumNoteEl.hidden = !pooled;
+  stadiumNoteEl.textContent = stadium
+    ? 'Futbol Sahası için sabit stadyum düzeni kullanılır — sütun/satır ayarı bu türde geçerli değil.'
+    : 'Genel Etkinlik ücretsiz/biletsiz tek bir giriş havuzudur — koltuk numarası ve bilet türü/fiyat yoktur, sadece toplam kapasite.';
+  screenAccentEl.hidden = pooled;
+
+  // Genel Etkinlik'te fiyat/bilet türü ve indirim kodu kavramı yok (bkz.
+  // joinGeneralEvent) — o panelleri gizleyip yerine tek bir kapasite
+  // alanı gösteriliyor.
+  generalCapacitySection.hidden = !genel;
+  tierPanelSection.hidden = genel;
+  discountPanelSection.hidden = genel;
+  if(genel) renderGeneralCapacityEditor();
+
+  // Ciro Özeti de fiyat/bilet türü varsayıyor — ücretsiz Genel Etkinlik'te
+  // hep "0 adet — 0₺" satırları göstermesi kafa karıştırıyordu, tamamen gizleniyor.
+  if(revenuePanel) revenuePanel.hidden = genel;
+
+  // Tekli/Çoklu Seçim, kapasiteli havuzlarda anlamsız (her havuz kendi
+  // miktar seçimini kendi modalinde yapıyor) — ♿ İşaretle bloklar için de
+  // geçerli kaldığından o ayrı kalıyor.
+  singleModeBtn.hidden = pooled;
+  bulkModeBtn.hidden = pooled;
+  if(pooled) setBulkMode(false);
+
+  // Filtre çipleri (Tümü/Boş/Erkek/Kadın/Satılan) havuzlu modda anlamsız —
+  // her blok/havuzun üzerinde zaten kendi "X/Y" sayısı yazıyor, ayrıca bir
+  // dolu/boş filtresine gerek yok. Takılı kalmış bir filtre varsa (başka bir
+  // türden geçilirken) tüm ızgara soluk görünür kalmasın diye sıfırlanıyor.
+  const gridFiltersEl = document.getElementById('gridFilters');
+  if(gridFiltersEl) gridFiltersEl.hidden = pooled;
+  if(pooled && currentFilter !== 'all'){
+    currentFilter = 'all';
+    document.querySelectorAll('#gridFilters .filter-chip').forEach(c => c.classList.toggle('is-active', c.dataset.filter === 'all'));
+  }
 }
 
 // seatSales must always be the same length as seatStates for index alignment —
@@ -435,8 +544,13 @@ function renderGrid(){
     renderStadiumGrid();
     return;
   }
+  if(venueType === 'genel'){
+    renderGeneralGrid();
+    return;
+  }
 
   seatGrid.classList.remove('stadium-mode');
+  seatGrid.classList.remove('general-mode');
   if(stadiumLegendEl) stadiumLegendEl.hidden = true;
   // Seats are direct grid children so CSS Grid wraps them into real rows —
   // wrapping them in per-row divs previously made every row a single grid
@@ -473,7 +587,9 @@ function renderGrid(){
 function renderStadiumGrid(){
   const total = STADIUM_BLOCKS.length;
   if(seatStates.length !== total){
-    const nextStates = new Array(total).fill('empty');
+    // Stadyumda "boş" 0 (satılan bilet sayısı), diğer venue türlerindeki
+    // 'empty' string'i değil — bkz. blockSoldCount/salesAt.
+    const nextStates = new Array(total).fill(0);
     const nextSales = new Array(total).fill(null);
     for(let i = 0; i < Math.min(seatStates.length, total); i++){
       nextStates[i] = seatStates[i];
@@ -484,6 +600,7 @@ function renderStadiumGrid(){
   }
   normalizeSalesLength();
 
+  seatGrid.classList.remove('general-mode');
   seatGrid.classList.add('stadium-mode');
   seatGrid.style.gridTemplateColumns = '';
   seatGrid.style.gridTemplateRows = '';
@@ -552,6 +669,50 @@ function renderStadiumLegend(){
   stadiumLegendEl.hidden = false;
 }
 
+// Genel Etkinlik: koltuk numarası yok, sabit stadyum şeması da yok — tek bir
+// ücretsiz/biletsiz giriş havuzu (bkz. poolBlocks/joinGeneralEvent) tek
+// satırlık bir kart olarak gösterilir. renderSeatVisual zaten isPooledMode()
+// dallanmasıyla aynı görsel bloğu (sold/empty/partial + kesir + dolgu
+// çubuğu) üretiyor, burada sadece stadyumun sabit pitch/grid düzeni yerine
+// basit bir liste düzeni kuruluyor.
+function renderGeneralGrid(){
+  const blocks = poolBlocks();
+  const total = blocks.length;
+  if(seatStates.length !== total){
+    const nextStates = new Array(total).fill(0);
+    const nextSales = new Array(total).fill(null);
+    for(let i = 0; i < Math.min(seatStates.length, total); i++){
+      nextStates[i] = seatStates[i];
+      nextSales[i] = seatSales[i] || null;
+    }
+    seatStates = nextStates;
+    seatSales = nextSales;
+  }
+  normalizeSalesLength();
+
+  seatGrid.classList.remove('stadium-mode');
+  seatGrid.classList.add('general-mode');
+  seatGrid.style.gridTemplateColumns = '';
+  seatGrid.style.gridTemplateRows = '';
+  seatGrid.classList.toggle('guest-mode', !canEdit());
+  if(stadiumLegendEl) stadiumLegendEl.hidden = true;
+  seatGrid.innerHTML = '';
+  seatButtons = [];
+
+  blocks.forEach((block, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    renderSeatVisual(btn, idx);
+    if(bulkMode && bulkSelected.has(idx)) btn.classList.add('bulk-selected');
+    btn.addEventListener('click', () => handleSeatClick(idx, btn));
+    seatGrid.appendChild(btn);
+    seatButtons.push(btn);
+  });
+
+  updateStats();
+  applyFilterAndSearch();
+}
+
 function handleSeatClick(idx, btn){
   // Erişilebilirlik işaretleme sadece yönetici özelliği; koltuğun dolu/boş
   // durumundan bağımsız çalışır (satılmış bir koltuk da işaretlenebilir).
@@ -561,6 +722,19 @@ function handleSeatClick(idx, btn){
   }
 
   if(!canPurchase()) return;
+
+  // Kapasiteli futbol bloğu "tek koltuk = tek alıcı" modelinde değil, toplu
+  // seçim/rezervasyon kilidi orada anlamsız (bkz. openStadiumBlockModal).
+  if(isStadiumMode()){
+    openStadiumBlockModal(idx);
+    return;
+  }
+  // Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — bilet türü/ödeme
+  // adımı yok, tek tıkla katılım (bkz. joinGeneralEvent).
+  if(venueType === 'genel'){
+    joinGeneralEvent();
+    return;
+  }
 
   // Toplu seçim artık misafirde de var (grup/aile bileti için) — sadece
   // erişilebilirlik işaretleme yönetici özelliği kalıyor. "Dolu" kontrolü
@@ -654,15 +828,16 @@ function labelFor(state){
 }
 
 function paymentLabel(payment){
-  return payment === 'kart' ? 'Kart' : payment === 'nakit' ? 'Nakit' : null;
+  const normalized = PAYMENT_LONG[payment] || payment;
+  return normalized === 'kart' ? 'Kart' : normalized === 'nakit' ? 'Nakit' : null;
 }
 
 // Same-row immediate left/right neighbor check. Warns (doesn't block) when a
 // gender assignment would put opposite genders directly side by side.
-// Stadium blocks aren't laid out as simple grid rows, so this check doesn't
-// apply there.
+// Havuzlu modlar (futbol/Genel Etkinlik) basit sütun×satır ızgarası
+// kullanmadığı için bu kontrol orada uygulanmıyor.
 function findAdjacencyConflict(idx, gender){
-  if(isStadiumMode()) return false;
+  if(isPooledMode()) return false;
   const col = idx % cols;
   const neighbors = [];
   if(col > 0) neighbors.push(idx - 1);
@@ -674,40 +849,87 @@ function findAdjacencyConflict(idx, gender){
 }
 
 function seatAriaLabel(idx){
+  if(isPooledMode()){
+    const block = poolBlocks()[idx];
+    const capacity = block.capacity;
+    const sold = blockSoldCount(idx);
+    let label = isStadiumMode()
+      ? `${block.label} Bloğu, ${sold}/${capacity} satıldı`
+      : `${block.label}, ${sold}/${capacity} katıldı`;
+    if(ACCESSIBLE_SEATS.has(idx)) label += ', erişilebilir';
+    return label;
+  }
+
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
-  const name = isStadiumMode() ? `${STADIUM_BLOCKS[idx].label} Bloğu` : (() => {
-    const r = Math.floor(idx / cols) + 1;
-    const c = (idx % cols) + 1;
-    return `Koltuk ${r}-${c}`;
-  })();
-  let label = `${name}, durum: ${labelFor(state)}`;
+  const r = Math.floor(idx / cols) + 1;
+  const c = (idx % cols) + 1;
+  let label = `Koltuk ${r}-${c}, durum: ${labelFor(state)}`;
   if(sale) label += `, satıldı: ${sale.label} ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`;
   if(ACCESSIBLE_SEATS.has(idx)) label += ', erişilebilir koltuk';
   return label;
 }
 
 function renderSeatVisual(btn, idx){
+  const accessible = ACCESSIBLE_SEATS.has(idx);
+
+  if(isPooledMode()){
+    const block = poolBlocks()[idx];
+    const capacity = block.capacity;
+    const sold = blockSoldCount(idx);
+    const full = capacity > 0 && sold >= capacity;
+    const hasAny = sold > 0;
+
+    // 'empty' = hiç satış yok ("Boş" çipi bunu arıyor), 'sold' = en az 1
+    // bilet satılmış ("Satılan" çipi bunu arıyor — tamamen dolu olması
+    // şart değil, kapasitesi 250 olan bir havuzda 1 satış bile "satılan"
+    // sayılır). Kısmen dolu olanlar ayrıca 'partial' alır (sadece görsel
+    // ayrım için, filtre mantığını etkilemiyor).
+    btn.className = ['seat', 'stadium-block', hasAny ? 'sold' : 'empty', (hasAny && !full) ? 'partial' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
+    btn.innerHTML = '';
+
+    const num = document.createElement('span');
+    num.className = 'seat-num';
+    num.textContent = block.label;
+    btn.appendChild(num);
+
+    const fraction = document.createElement('span');
+    fraction.className = 'stadium-block-fraction';
+    fraction.textContent = `${sold}/${capacity}`;
+    btn.appendChild(fraction);
+
+    const fillBar = document.createElement('span');
+    fillBar.className = 'stadium-block-fill';
+    fillBar.style.width = `${capacity > 0 ? Math.min(100, Math.round((sold / capacity) * 100)) : 0}%`;
+    btn.appendChild(fillBar);
+
+    if(accessible){
+      const wheel = document.createElement('span');
+      wheel.className = 'accessible-badge';
+      wheel.textContent = '♿';
+      wheel.setAttribute('aria-hidden', 'true');
+      btn.appendChild(wheel);
+    }
+
+    btn.title = full ? (isStadiumMode() ? 'Bu blok dolu.' : 'Bu etkinlik dolu.') : `${capacity - sold} yer kaldı.`;
+    btn.setAttribute('aria-label', seatAriaLabel(idx));
+    return;
+  }
+
+  // ---- Diğer venue türleri: davranış değişmedi (tek koltuk = tek alıcı) ----
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
-  const stadium = isStadiumMode();
-
-  // stadium-block must be re-applied every time, not just on the initial
-  // render — finalizeSeatSale()/modalClearSeatBtn call this directly after a
-  // sale, which used to wipe className back to just "seat" + state, losing
-  // the stadium sizing class.
-  const accessible = ACCESSIBLE_SEATS.has(idx);
   // "empty" de dahil DAİMA bir durum sınıfı eklenmeli: "Boş" filtre çipi
   // .seat:not(.empty) arıyor — eskiden boş koltuklar hiç sınıf almadığı
   // için bu filtre hiçbir zaman doğru koltuğu bulamıyor, her şeyi
   // soluklaştırıyordu. .seat.empty için ayrı bir görsel kural yok, o
   // yüzden bu eklemenin görünüme etkisi yok, sadece filtreyi düzeltiyor.
-  btn.className = ['seat', state, sale ? 'sold' : null, stadium ? 'stadium-block' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
+  btn.className = ['seat', state, sale ? 'sold' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
 
   const num = document.createElement('span');
   num.className = 'seat-num';
-  num.textContent = stadium ? STADIUM_BLOCKS[idx].label : idx + 1;
+  num.textContent = idx + 1;
   btn.appendChild(num);
 
   if(accessible){
@@ -732,17 +954,37 @@ function renderSeatVisual(btn, idx){
 }
 
 function updateStats(){
-  const total = seatStates.length;
-  const male = seatStates.filter(s => s === 'male').length;
-  const female = seatStates.filter(s => s === 'female').length;
-  const empty = total - male - female;
-  const sold = seatSales.filter(Boolean).length;
-  const revenue = seatSales.reduce((sum, s) => sum + (s ? s.price : 0), 0);
+  const pooled = isPooledMode();
+  let total, taken, sold;
+
+  // Havuzlu modlarda (futbol/Genel Etkinlik) seatStates[idx] cinsiyet değil
+  // satılan bilet SAYISI — "Erkek"/"Kadın" kartlarının burada karşılığı yok
+  // (bkz. poolBlocks/blockSoldCount), bu yüzden gizlenip toplam kapasite/
+  // satılan adet üzerinden hesaplanıyor.
+  const maleStatEl = document.getElementById('statMale').closest('.stat');
+  const femaleStatEl = document.getElementById('statFemale').closest('.stat');
+  if(maleStatEl) maleStatEl.hidden = pooled;
+  if(femaleStatEl) femaleStatEl.hidden = pooled;
+
+  if(pooled){
+    const blocks = poolBlocks();
+    total = blocks.reduce((sum, b) => sum + b.capacity, 0);
+    taken = blocks.reduce((sum, b, idx) => sum + blockSoldCount(idx), 0);
+    sold = taken;
+  } else {
+    const male = seatStates.filter(s => s === 'male').length;
+    const female = seatStates.filter(s => s === 'female').length;
+    document.getElementById('statMale').textContent = male;
+    document.getElementById('statFemale').textContent = female;
+    total = seatStates.length;
+    taken = male + female;
+    sold = seatSales.filter(Boolean).length;
+  }
+
+  const revenue = allSalesFlat().reduce((sum, s) => sum + s.price, 0);
 
   document.getElementById('statTotal').textContent = total;
-  document.getElementById('statMale').textContent = male;
-  document.getElementById('statFemale').textContent = female;
-  document.getElementById('statEmpty').textContent = empty;
+  document.getElementById('statEmpty').textContent = total - taken;
   document.getElementById('statSold').textContent = sold;
   document.getElementById('statRevenue').textContent = `${revenue} ₺`;
 
@@ -750,9 +992,9 @@ function updateStats(){
   // yuzde hesaplarsak misafir icin her etkinlik DAIMA %0 gorunurdu (tam
   // olarak bu bug canli sitede vardi: liste karti "%55 dolu" derken
   // etkinlik icindeki Doluluk Orani "%0" gosteriyordu). seatStates
-  // (erkek/kadin/bos) herkese gonderiliyor, dolulugu ondan hesapla --
-  // liste ekranindaki computeOccupancy() de zaten boyle yapiyor.
-  const taken = male + female;
+  // (erkek/kadin/bos, futbolda satilan sayisi) herkese gonderiliyor,
+  // dolulugu ondan hesapla -- liste ekranindaki computeOccupancy() de
+  // zaten boyle yapiyor.
   const occupancyPercent = total > 0 ? Math.round((taken / total) * 100) : 0;
   const capacityPercentEl = document.getElementById('capacityPercent');
   const capacityBarEl = document.getElementById('capacityBar');
@@ -766,38 +1008,48 @@ function updateStats(){
 // and a second breakdown by payment method (Kart/Nakit). Both are keyed by the
 // snapshot on each sale, not the live tier list, so a renamed/deleted tier still
 // shows up correctly under its original name.
+function buildRevenueRow(label, valueText){
+  const row = document.createElement('div');
+  row.className = 'revenue-row';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  const valueEl = document.createElement('span');
+  valueEl.textContent = valueText;
+  row.appendChild(labelEl);
+  row.appendChild(valueEl);
+  return row;
+}
+
 function updateRevenueBreakdown(totalRevenue){
   const byTier = new Map();
   TICKET_TIERS.forEach(t => byTier.set(t.label, { count: 0, revenue: 0 }));
   const byPayment = { kart: 0, nakit: 0 };
 
-  seatSales.forEach(s => {
-    if(!s) return;
+  allSalesFlat().forEach(s => {
     if(!byTier.has(s.label)) byTier.set(s.label, { count: 0, revenue: 0 });
     const entry = byTier.get(s.label);
     entry.count++;
     entry.revenue += s.price;
-    if(s.payment === 'kart' || s.payment === 'nakit') byPayment[s.payment] += s.price;
+    // payment "kart"/"nakit" ya da kısaltılmış "k"/"n" olabilir (bkz.
+    // PAYMENT_SHORT/PAYMENT_LONG) — ikisini de kapsayacak şekilde normalize.
+    const paymentLong = PAYMENT_LONG[s.payment] || s.payment;
+    if(paymentLong === 'kart' || paymentLong === 'nakit') byPayment[paymentLong] += s.price;
   });
 
   revenueBreakdownEl.innerHTML = '';
   byTier.forEach((entry, label) => {
-    const row = document.createElement('div');
-    row.className = 'revenue-row';
-    row.innerHTML = `<span>${label}</span><span>${entry.count} adet — ${entry.revenue} ₺</span>`;
-    revenueBreakdownEl.appendChild(row);
+    // textContent (not innerHTML) — label bir bilet türü adı, admin
+    // panelinden serbest metin olarak girilebiliyor; innerHTML ile
+    // basılırsa depolanmış (stored) XSS'e açık olurdu.
+    revenueBreakdownEl.appendChild(buildRevenueRow(label, `${entry.count} adet — ${entry.revenue} ₺`));
   });
-  const totalRow = document.createElement('div');
-  totalRow.className = 'revenue-row revenue-total';
-  totalRow.innerHTML = `<span>Toplam Ciro</span><span>${totalRevenue} ₺</span>`;
+  const totalRow = buildRevenueRow('Toplam Ciro', `${totalRevenue} ₺`);
+  totalRow.classList.add('revenue-total');
   revenueBreakdownEl.appendChild(totalRow);
 
   paymentBreakdownEl.innerHTML = '';
   [['Kart', byPayment.kart], ['Nakit', byPayment.nakit]].forEach(([label, amount]) => {
-    const row = document.createElement('div');
-    row.className = 'revenue-row';
-    row.innerHTML = `<span>${label}</span><span>${amount} ₺</span>`;
-    paymentBreakdownEl.appendChild(row);
+    paymentBreakdownEl.appendChild(buildRevenueRow(label, `${amount} ₺`));
   });
 
   renderSalesChart();
@@ -812,8 +1064,7 @@ function renderSalesChart(){
   const byDay = new Map();
   let undated = { count: 0, revenue: 0 };
 
-  seatSales.forEach(s => {
-    if(!s) return;
+  allSalesFlat().forEach(s => {
     if(!s.soldAt){ undated.count++; undated.revenue += s.price; return; }
     const day = String(s.soldAt).slice(0, 10);
     if(!byDay.has(day)) byDay.set(day, { count: 0, revenue: 0 });
@@ -898,6 +1149,7 @@ document.querySelectorAll('.preset-chip[data-cols]').forEach(chip => {
 
 document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
   chip.addEventListener('click', () => {
+    const wasStadium = isStadiumMode();
     venueType = chip.dataset.venue;
     renderVenueAccent();
     pushVenueType();
@@ -909,18 +1161,51 @@ document.querySelectorAll('#venueTypeChips .preset-chip').forEach(chip => {
       TICKET_TIERS = [...DEFAULT_STADIUM_TIERS];
       renderTierList();
       pushTiers();
+      // Baska bir venue'den geliyorsak seatStates hala 'e'/'m'/'f' string'i
+      // tasiyor olabilir -- stadyumda bu alan artik SAYI (satilan bilet
+      // adedi). Uzunluk tesaduefen STADIUM_BLOCKS.length'e denk gelirse
+      // renderStadiumGrid'deki uzunluk kontrolu bu donusumu atlar, o yuzden
+      // burada ayrica ve kosulsuz donusturuyoruz.
+      seatStates = seatStates.map(s => isSeatTaken(s) ? 1 : 0);
       // renderGrid() will resize seatStates/seatSales to STADIUM_BLOCKS.length.
       if(pruneAccessibleSeats(STADIUM_BLOCKS.length)) pushAccessibleSeats();
       renderGrid();
       pushSeatStates();
       pushSalesData();
-    } else if(seatStates.length !== cols * rows){
-      // Coming back from the fixed stadium layout — its block count won't
-      // line up with whatever cols/rows this venue type uses, so start
-      // this venue type with a fresh empty grid rather than a length mismatch.
-      generateGrid(false);
-    } else {
+    } else if(venueType === 'genel'){
+      // Genel Etkinlik: koltuk numarası VE bilet türü/fiyat yok — tek bir
+      // ücretsiz giriş havuzu (bkz. poolBlocks/joinGeneralEvent). Kapasitesi
+      // yoksa varsayılana çekiliyor; başka bir venue'den geliniyorsa eski
+      // seatStates (koltuk/blok bazlı) burada anlamsız, sıfırlanıyor.
+      // Futboldan geliniyorsa TICKET_TIERS da sıfırlanıyor — genel'de
+      // gösterilmiyor ama sonra tekrar sinema/tiyatro/konser'e geçilirse
+      // eski Premium/Gold VIP isimlerinin sızmaması için.
+      if(wasStadium) TICKET_TIERS = [...DEFAULT_TIERS];
+      if(!GENERAL_CAPACITY) GENERAL_CAPACITY = DEFAULT_GENERAL_CAPACITY;
+      pushGeneralCapacity();
+      seatStates = [0];
+      if(pruneAccessibleSeats(1)) pushAccessibleSeats();
       renderGrid();
+      pushSeatStates();
+      pushSalesData();
+    } else {
+      if(wasStadium){
+        // Futboldan çıkılıyor — Premium/Gold VIP/... katmanları bu venue
+        // türlerinde anlamsız kalır, genel Standart/VIP/Öğrenci listesine
+        // dönülüyor. Bunu yapmazsak (önceki bug) sinema/tiyatro/konser'e
+        // dönüldüğünde fiyat listesi hâlâ futbol katmanlarını gösteriyordu.
+        TICKET_TIERS = [...DEFAULT_TIERS];
+        renderTierList();
+        pushTiers();
+      }
+      if(seatStates.length !== cols * rows){
+        // Coming back from the fixed stadium layout — its block count won't
+        // line up with whatever cols/rows this venue type uses, so start
+        // this venue type with a fresh empty grid rather than a length mismatch.
+        generateGrid(false);
+      } else {
+        renderGrid();
+      }
     }
 
     toast(`Etkinlik türü: ${VENUE_TYPES[venueType].label}`);
@@ -1162,12 +1447,75 @@ savePosterBtn.addEventListener('click', async () => {
   toast(url ? 'Afiş kaydedildi.' : 'Afiş kaldırıldı.');
 });
 
+// Not: poster_url gibi herkese açık bir alan — misafir eventNoteDisplay'de
+// görür, yönetici burada (eventNoteInput/saveNoteBtn) düzenler.
+function renderNoteEditor(){
+  eventNoteInput.value = EVENT_NOTE || '';
+  if(EVENT_NOTE){
+    eventNoteDisplay.textContent = EVENT_NOTE;
+    eventNoteDisplay.hidden = false;
+  } else {
+    eventNoteDisplay.textContent = '';
+    eventNoteDisplay.hidden = true;
+  }
+}
+
+function renderGeneralCapacityEditor(){
+  generalCapacityInput.value = GENERAL_CAPACITY;
+}
+
+saveGeneralCapacityBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const raw = Math.round(Number(generalCapacityInput.value));
+  const capacity = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_GENERAL_CAPACITY;
+  generalCapacityInput.value = capacity;
+
+  saveGeneralCapacityBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    general_capacity: capacity, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveGeneralCapacityBtn.disabled = false;
+
+  if(error){ toast('Kapasite kaydedilemedi.'); return; }
+  GENERAL_CAPACITY = capacity;
+  if(seatButtons[0]) renderSeatVisual(seatButtons[0], 0);
+  updateStats();
+  toast('Kapasite kaydedildi.');
+});
+
+saveNoteBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const note = eventNoteInput.value.trim() || null;
+
+  saveNoteBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    note, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveNoteBtn.disabled = false;
+
+  if(error){ toast('Not kaydedilemedi.'); return; }
+  EVENT_NOTE = note;
+  renderNoteEditor();
+  toast(note ? 'Not kaydedildi.' : 'Not kaldırıldı.');
+});
+
 // ===== Dinamik fiyatlandırma (etkinlik başına, sadece Yönetici) =====
 // Doluluk oranı eşiği geçince bilet fiyatlarına yüzde zam uygulanır.
 // Zam, indirim kodundan ÖNCE hesaplanır: önce zamlı fiyat bulunur,
 // indirim onun üzerine iner.
 
 function currentOccupancyPercent(){
+  // Havuzlu modda (futbol/Genel Etkinlik) seatStates[idx] "en az 1 satış var
+  // mı" değil, gerçek kapasite doluluk oranı istenir — havuzdaki tekil
+  // "satıldı mı" boole'u burada yanıltıcı olurdu (40 kişilik havuz 1 bilet
+  // satınca %100 dolu sayılırdı).
+  if(isPooledMode()){
+    const blocks = poolBlocks();
+    const totalCap = blocks.reduce((sum, b) => sum + b.capacity, 0);
+    if(!totalCap) return 0;
+    const taken = blocks.reduce((sum, b, idx) => sum + blockSoldCount(idx), 0);
+    return Math.round((taken / totalCap) * 100);
+  }
   const total = seatStates.length;
   if(!total) return 0;
   return Math.round((seatStates.filter(isSeatTaken).length / total) * 100);
@@ -1230,6 +1578,7 @@ function showModalPanel(name){
 
 function seatLabelFor(idx){
   if(isStadiumMode()) return `${STADIUM_BLOCKS[idx].label} Bloğu`;
+  if(venueType === 'genel') return poolBlocks()[idx].label;
   const r = Math.floor(idx / cols) + 1;
   const c = (idx % cols) + 1;
   return `Koltuk ${r}-${c}`;
@@ -1365,7 +1714,132 @@ function closeSeatModal(){
   modalBuyerName = '';
   modalDiscount = null;
   modalHeldIdx = null;
+  stadiumTier = null;
+  stadiumRemainingCapacity = 0;
+  stadiumQuantity = 1;
+  stadiumBlockCapacityInfoEl.hidden = true;
 }
+
+// Kapasiteli futbol blokları: reserve_seat/hold TUTULMUYOR — bir blok
+// N kişilik olduğu için tek alıcıyı beklerken bütün bloğu kilitlemek diğer
+// alıcıları anlamsız yere bekletirdi. Kapasite kontrolü purchase_stadium_block
+// RPC'sinde atomik olarak (satın alma anında) yapılıyor, bkz. supabase-setup.sql.
+function openStadiumBlockModal(idx){
+  modalSeatIdx = idx;
+  modalSeatIndices = null;
+  modalGender = null;
+  modalTier = null;
+  modalBuyerName = '';
+  modalDiscount = null;
+  modalHeldIdx = null;
+
+  const block = STADIUM_BLOCKS[idx];
+  const sold = blockSoldCount(idx);
+  stadiumRemainingCapacity = Math.max(0, block.capacity - sold);
+  stadiumTier = block.tier;
+  modalTier = block.tier; // tür blok tarafından sabit — bilet türü paneli atlanıyor
+
+  seatModalTitle.textContent = `${block.label} Bloğu` + (ACCESSIBLE_SEATS.has(idx) ? ' ♿' : '');
+
+  if(stadiumRemainingCapacity <= 0){
+    modalInfoTextEl.textContent = `Bu blok dolu (${sold}/${block.capacity}).`;
+    viewTicketBtn.hidden = true;
+    viewTicketBtn.onclick = null;
+    modalClearSeatBtn.hidden = true; // tek bileti değil tüm bloğu boşaltmak anlamsız/tehlikeli — bkz. cancel_stadium_ticket
+    holdCountdownEl.hidden = true;
+    stadiumBlockCapacityInfoEl.hidden = true; // "Bu blok dolu" bilgisi zaten modalInfoTextEl'de
+    showModalPanel('info');
+    seatModalOverlay.hidden = false;
+    return;
+  }
+
+  // Bloğa tıklar tıklamaz (cinsiyet adımından önce) kalan yer sayısı görünsün
+  // istendi — sadece "Adet Seç" adımına geçince değil.
+  stadiumBlockCapacityInfoEl.textContent = `${sold}/${block.capacity} satıldı — ${stadiumRemainingCapacity} yer kaldı.`;
+  stadiumBlockCapacityInfoEl.hidden = false;
+
+  discountCodeInput.value = '';
+  discountNoteText.hidden = true;
+  // Cinsiyet, kapasiteli bir bloktaki tekil biletlerde hiç kaydedilmiyor
+  // (bkz. buildStadiumSaleRecords/buildSaleRecord) — bu adım anlamsızdı,
+  // doğrudan adet seçimine geçiliyor.
+  openStadiumQuantityPanel();
+  seatModalOverlay.hidden = false;
+}
+
+// Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — fiyat/bilet türü,
+// alıcı bilgisi, ödeme yöntemi, QR/bilet kodu YOK. Tek tıkla katılım,
+// kapasite kontrolü purchase_stadium_block RPC'sinde atomik yapılıyor
+// (p_sales boş dizi geçiliyor — kişisel bir kayıt tutulmuyor, sadece sayaç
+// artıyor). Modal hiç açılmıyor, doğrudan confirm() ile onay alınıyor.
+async function joinGeneralEvent(){
+  const block = poolBlocks()[0];
+  const sold = blockSoldCount(0);
+  const remaining = block.capacity - sold;
+
+  if(remaining <= 0){
+    toast('Bu etkinlik dolu.');
+    return;
+  }
+  if(!confirm(`${sold}/${block.capacity} katıldı — ${remaining} yer kaldı. Katılmak istiyor musun?`)) return;
+
+  if(currentRole !== 'guest'){
+    seatStates[0] = sold + 1;
+    if(seatButtons[0]) renderSeatVisual(seatButtons[0], 0);
+    updateStats();
+    pushSeatStates();
+    toast('Katılım kaydedildi.');
+    return;
+  }
+
+  if(!currentEventId) return;
+  try {
+    const { error } = await supabaseClient.rpc('purchase_stadium_block', {
+      p_event_id: currentEventId, p_idx: 0, p_quantity: 1, p_capacity: block.capacity, p_sales: [], p_token: holdToken,
+    });
+    if(error) throw error;
+
+    seatStates[0] = sold + 1;
+    if(seatButtons[0]) renderSeatVisual(seatButtons[0], 0);
+    updateStats();
+    toast('Katılımın kaydedildi!');
+  } catch(err){
+    console.warn('Katılım kaydedilemedi.', err);
+    const msg = (err && err.message) || '';
+    toast(msg.includes('CAPACITY_EXCEEDED') ? 'Üzgünüz, etkinlik az önce doldu.' : 'Katılım kaydedilemedi — buluta bağlanılamadı.');
+  }
+}
+
+function updateStadiumQuantityPrice(){
+  const tier = TICKET_TIERS.find(t => t.id === stadiumTier);
+  const qty = Math.max(1, Math.min(stadiumRemainingCapacity, Math.round(Number(stadiumQuantityInput.value)) || 1));
+  stadiumQuantityInput.value = qty;
+  stadiumQuantity = qty;
+  if(!tier){ stadiumQuantityPriceEl.textContent = ''; return; }
+  const unit = effectiveTierPrice(tier);
+  stadiumQuantityPriceEl.textContent = `${tier.label}: ${unit}₺ × ${qty} = ${unit * qty}₺`;
+}
+
+function openStadiumQuantityPanel(){
+  const tier = TICKET_TIERS.find(t => t.id === stadiumTier);
+  stadiumQuantityInput.max = stadiumRemainingCapacity;
+  stadiumQuantityInput.value = 1;
+  stadiumQuantityInfoEl.textContent = `${stadiumRemainingCapacity} yer kaldı${tier ? ` — ${tier.label}` : ''}.`;
+  updateStadiumQuantityPrice();
+  showModalPanel('quantity');
+}
+
+stadiumQuantityInput.addEventListener('input', updateStadiumQuantityPrice);
+
+stadiumQuantityContinueBtn.addEventListener('click', () => {
+  updateStadiumQuantityPrice();
+  buyerNameInput.value = '';
+  buyerNoteText.textContent = currentRole === 'guest'
+    ? 'Biletlerin bu isimle düzenlenecek.'
+    : 'Opsiyonel — boş bırakılabilir.';
+  showModalPanel('buyer');
+  buyerNameInput.focus();
+});
 
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1376,7 +1850,8 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
     if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
     else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
 
-    showModalPanel('tier');
+    if(isStadiumMode()) openStadiumQuantityPanel();
+    else showModalPanel('tier');
   });
 });
 
@@ -1455,22 +1930,29 @@ function updatePriceSummary(){
   const finalPrice = computeDiscountedPrice(surged, modalDiscount); // sonra indirim
   const surgeApplied = surged !== tier.price;
 
-  let text = `${tier.label}: `;
+  // Kapasiteli futbol bloğunda tek fiyat değil, adet × birim fiyat toplamı gösteriliyor.
+  const qty = isStadiumMode() ? (stadiumQuantity || 1) : 1;
+  const prefix = qty > 1 ? `${tier.label} × ${qty}: ` : `${tier.label}: `;
+  const suffix = qty > 1 ? ` × ${qty} = ${finalPrice * qty}₺` : '';
+
+  let text = prefix;
   if(surgeApplied && modalDiscount){
-    text += `${tier.price}₺ → ${surged}₺ (yoğun talep) → ${finalPrice}₺ (kod: ${modalDiscount.code})`;
+    text += `${tier.price}₺ → ${surged}₺ (yoğun talep) → ${finalPrice}₺ (kod: ${modalDiscount.code})${suffix}`;
   } else if(surgeApplied){
-    text += `${tier.price}₺ → ${surged}₺ (yoğun talep)`;
+    text += `${tier.price}₺ → ${surged}₺ (yoğun talep)${suffix}`;
   } else if(modalDiscount){
-    text += `${tier.price}₺ → ${finalPrice}₺ (kod: ${modalDiscount.code})`;
+    text += `${tier.price}₺ → ${finalPrice}₺ (kod: ${modalDiscount.code})${suffix}`;
   } else {
-    text += `${tier.price}₺`;
+    text += `${tier.price}₺${suffix}`;
   }
   priceSummaryText.textContent = text;
 }
 
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if(currentRole === 'guest'){
+    if(isStadiumMode()){
+      finalizeStadiumPurchase(btn.dataset.payment);
+    } else if(currentRole === 'guest'){
       (modalSeatIndices && modalSeatIndices.length > 1)
         ? finalizeGuestBulkPurchase(btn.dataset.payment)
         : finalizeGuestPurchase(btn.dataset.payment);
@@ -1480,22 +1962,107 @@ document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment
   });
 });
 
+// Optimizasyon notu: bu kayıt event_sales'in içinde saklanıyor ve Realtime
+// bir satır her değiştiğinde TÜM diziyi tekrar yayınlıyor (bkz. websocket
+// veri akışı notu) — bu yüzden alan sayısı/boyutu bir etkinlikteki satış
+// sayısıyla çarpılarak büyüyor. originalPrice/discountCode/surged/buyerName
+// çoğu satışta boş/varsayılan kalıyor; hep null/false yazmak yerine sadece
+// geçerliyken ekleniyor (okuyan taraflar zaten hepsi truthy kontrolü yapıyor,
+// undefined ile null/false arasında fark yok). checkedIn de aynı sebeple hiç
+// yazılmıyor — SQL tarafı da (coalesce(...,false)) zaten "yoksa false" kabul
+// ediyor. payment "kart"/"nakit" yerine "k"/"n" (seat_states'teki e/m/f
+// kısaltmasıyla aynı fikir).
 function buildSaleRecord(tier, payment){
   const surged = effectiveTierPrice(tier);
   const finalPrice = computeDiscountedPrice(surged, modalDiscount);
   const changed = finalPrice !== tier.price;
-  return {
-    tier: tier.id, label: tier.label, price: finalPrice, payment,
-    // originalPrice, biletin üzerinde "şu fiyattan şuna" gösterebilmek için —
-    // fiyat zam veya indirim yüzünden liste fiyatından farklıysa doldurulur.
-    originalPrice: changed ? tier.price : null,
-    discountCode: modalDiscount ? modalDiscount.code : null,
-    surged: surged !== tier.price,
+  const sale = {
+    tier: tier.id, label: tier.label, price: finalPrice,
+    payment: PAYMENT_SHORT[payment] || payment,
     soldAt: new Date().toISOString(),   // satış grafiği bunu kullanıyor
-    buyerName: modalBuyerName || null,
     ticketCode: generateTicketCode(),
-    checkedIn: false,
   };
+  if(changed) sale.originalPrice = tier.price;
+  if(modalDiscount) sale.discountCode = modalDiscount.code;
+  if(surged !== tier.price) sale.surged = true;
+  if(modalBuyerName) sale.buyerName = modalBuyerName;
+  return sale;
+}
+
+function buildStadiumSaleRecords(tier, payment, qty){
+  const records = [];
+  for(let i = 0; i < qty; i++) records.push(buildSaleRecord(tier, payment));
+  return records;
+}
+
+// Kapasiteli futbol bloğu satın alma: personel mevcut tüm-diziyi-yeniden-yazan
+// push mekanizmasını kullanır (finalizeSeatSale ile aynı güven modeli);
+// misafir ise atomik purchase_stadium_block RPC'sini çağırır — bu RPC hem
+// kapasiteyi aşmadığını hem de bir aktif hold varsa onu kontrol eder (bkz.
+// supabase-setup.sql). Rezervasyon holdToken burada hiç alınmadı (handleSeatClick
+// notuna bkz.), bu yüzden p_token sadece "bu blokta benim adıma bir hold var mı"
+// kontrolü için geçiliyor (normalde olmayacak, ileride eklenirse diye).
+async function finalizeStadiumPurchase(payment){
+  const idx = modalSeatIdx;
+  if(idx === null) return;
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier) return;
+
+  const qty = stadiumQuantity || 1;
+  const block = STADIUM_BLOCKS[idx];
+  const records = buildStadiumSaleRecords(tier, payment, qty);
+
+  if(currentRole !== 'guest'){
+    seatStates[idx] = blockSoldCount(idx) + qty;
+    seatSales[idx] = [...salesAt(idx), ...records];
+    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
+
+    updateStats();
+    pushSeatStates();
+    pushSalesData();
+    closeSeatModal();
+    toast(`${qty} bilet kaydedildi.`);
+    showTicketView(idx, records[0]);
+    return;
+  }
+
+  if(!currentEventId) return;
+  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
+    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient.rpc('purchase_stadium_block', {
+      p_event_id: currentEventId,
+      p_idx: idx,
+      p_quantity: qty,
+      p_capacity: block.capacity,
+      p_sales: records,
+      p_token: holdToken,
+    });
+    if(error) throw error;
+
+    seatStates[idx] = blockSoldCount(idx) + qty;
+    seatSales[idx] = [...salesAt(idx), ...records];
+    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
+    updateStats();
+
+    records.forEach(r => saveMyTicketLocally(currentEventNameBadge.textContent || '', seatLabelFor(idx), r.ticketCode));
+    closeSeatModal();
+    toast(qty > 1 ? `${qty} bilet oluşturuldu — "Biletim Var" listenden görebilirsin.` : 'Bilet oluşturuldu.');
+    showTicketView(idx, records[0]);
+  } catch(err){
+    console.warn('Blok satın alınamadı.', err);
+    const msg = (err && err.message) || '';
+    toast(msg.includes('CAPACITY_EXCEEDED')
+      ? 'Üzgünüz, bu blokta yeterli yer kalmadı.'
+      : msg.includes('SEAT_HELD')
+        ? 'Bu blok şu anda başka biri tarafından işleniyor, birazdan tekrar dene.'
+        : 'Satın alma başarısız — buluta bağlanılamadı.');
+    closeSeatModal();
+  }
 }
 
 // Personel akışı (tekli veya toplu) — mevcut tüm-diziyi-yeniden-yazan push
@@ -1670,6 +2237,9 @@ seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOve
 function computeSeatLabelFor(idx, eventInfo){
   if(!eventInfo) return seatLabelFor(idx);
   if(eventInfo.venue_type === 'futbol') return `${STADIUM_BLOCKS[idx] ? STADIUM_BLOCKS[idx].label : idx} Bloğu`;
+  // Genel Etkinlik'te bilet/QR hiç yok (bkz. joinGeneralEvent), bu yüzden
+  // "Biletim Var" araması oraya hiçbir zaman bir kayıt bulamaz — ayrı bir
+  // dal gerekmiyor.
   const c = eventInfo.cols || 1;
   const r = Math.floor(idx / c) + 1;
   const col = (idx % c) + 1;
@@ -1757,14 +2327,22 @@ const ticketCancelBtn = document.getElementById('ticketCancelBtn');
 
 ticketCancelBtn.addEventListener('click', async () => {
   if(!ticketCancelContext || !supabaseClient) return;
-  const { eventId, idx, ticketCode } = ticketCancelContext;
+  const { eventId, idx, ticketCode, venueType: ticketVenueType } = ticketCancelContext;
   if(!confirm('Bu bilet iptal edilecek ve koltuk tekrar satışa açılacak. Emin misin?')) return;
 
   ticketCancelBtn.disabled = true;
   try {
-    const { error } = await supabaseClient.rpc('cancel_ticket', {
-      p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
-    });
+    // Futbol bloklarında bir bilet iptali koltuğu boşaltmaz, sadece o bloğun
+    // satılan sayısını 1 azaltır ve o tekil bilet kaydını diziden çıkarır
+    // (bkz. cancel_stadium_ticket) — diğer venue türlerinde koltuğun tamamı
+    // tekrar boşa düşer (cancel_ticket).
+    const { error } = ticketVenueType === 'futbol'
+      ? await supabaseClient.rpc('cancel_stadium_ticket', {
+          p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+        })
+      : await supabaseClient.rpc('cancel_ticket', {
+          p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+        });
     if(error) throw error;
 
     forgetMyTicketLocally(ticketCode);
@@ -1885,13 +2463,19 @@ function verifyTicket(){
   const code = checkinCodeInput.value.trim();
   if(!code) return;
 
-  const idx = seatSales.findIndex(s => s && s.ticketCode === code);
+  // salesAt() her idx'i her zaman dizi olarak döner (futbolda gerçek bir
+  // dizi, diğer venue türlerinde tekil kaydı [kayit] olarak sarar) — bu
+  // yüzden tek bir arama koduyla her iki veri şeklinde de çalışır.
+  let idx = -1, sale = null;
+  for(let i = 0; i < seatSales.length; i++){
+    const found = salesAt(i).find(s => s.ticketCode === code);
+    if(found){ idx = i; sale = found; break; }
+  }
   if(idx === -1){
     showCheckinResult('error', 'Bilet bulunamadı.');
     return;
   }
 
-  const sale = seatSales[idx];
   const seatLabel = seatLabelFor(idx);
 
   if(sale.checkedIn){
@@ -1976,6 +2560,12 @@ function closeMyTicketModal(){
   myTicketOverlay.hidden = true;
 }
 
+// Eskiden client TÜM event_sales tablosunu (her etkinliğin bütün satış
+// dizisini) indirip kendi tarayıcısında arıyordu — hem gereksiz ağır bir
+// veri transferiydi hem de (güvenlik denetimi sonrası event_sales artık
+// sadece personele açık olduğu için) misafir için zaten çalışmazdı. Arama
+// artık sunucuda (find_ticket_by_code RPC) yapılıyor, sadece eşleşen tek
+// bilet dönüyor.
 async function findMyTicket(){
   const code = myTicketCodeInput.value.trim();
   if(!code || !supabaseClient) return;
@@ -1983,22 +2573,10 @@ async function findMyTicket(){
   myTicketFindBtn.disabled = true;
   myTicketResultEl.hidden = true;
   try {
-    const [salesRes, eventsRes] = await Promise.all([
-      supabaseClient.from('event_sales').select('event_id, seat_sales'),
-      supabaseClient.from('events').select('id, name, venue_type, cols, rows, accessible_seats'),
-    ]);
-    if(salesRes.error) throw salesRes.error;
-    if(eventsRes.error) throw eventsRes.error;
+    const { data, error } = await supabaseClient.rpc('find_ticket_by_code', { p_code: code });
+    if(error) throw error;
 
-    let found = null;
-    for(const row of salesRes.data || []){
-      const idx = (row.seat_sales || []).findIndex(s => s && s.ticketCode === code);
-      if(idx !== -1){
-        found = { eventId: row.event_id, idx, sale: row.seat_sales[idx] };
-        break;
-      }
-    }
-
+    const found = Array.isArray(data) ? data[0] : data;
     if(!found){
       myTicketResultEl.className = 'checkin-result error';
       myTicketResultEl.textContent = 'Bilet bulunamadı.';
@@ -2006,10 +2584,13 @@ async function findMyTicket(){
       return;
     }
 
-    const ev = (eventsRes.data || []).find(e => e.id === found.eventId) || { name: '', venue_type: 'sinema', cols: 1 };
+    const ev = {
+      name: found.event_name, venue_type: found.event_venue_type,
+      cols: found.event_cols, rows: found.event_rows, accessible_seats: found.event_accessible_seats,
+    };
     closeMyTicketModal();
-    ticketCancelContext = { eventId: found.eventId, idx: found.idx, ticketCode: code };
-    showTicketView(found.idx, found.sale, ev);
+    ticketCancelContext = { eventId: found.event_id, idx: found.seat_idx, ticketCode: code, venueType: ev.venue_type };
+    showTicketView(found.seat_idx, found.sale, ev);
   } catch(err){
     console.warn('Bilet aranamadı.', err);
     myTicketResultEl.className = 'checkin-result error';
@@ -2093,15 +2674,21 @@ function applyFilterAndSearch(){
     let isMatch = true;
 
     if (hasSearch) {
-      const sale = seatSales[idx];
+      // Havuzlu modlarda (futbol/Genel Etkinlik) seatSales[idx] tekil bir
+      // kayıt değil bir DİZİ, ve state (satılan sayısı) 'male'/'female' hiç
+      // olmuyor — salesAt() ile normalize edip her satışı ayrı ayrı kontrol
+      // ediyoruz, cinsiyet aramasını da bu modda devre dışı bırakıyoruz
+      // (bkz. blockSoldCount/salesAt).
+      const pooled = isPooledMode();
+      const sales = salesAt(idx);
       const seatNumStr = String(idx + 1);
-      const label = isStadiumMode() ? STADIUM_BLOCKS[idx].label.toLowerCase() : `koltuk ${Math.floor(idx / cols) + 1}-${(idx % cols) + 1}`;
+      const label = pooled ? poolBlocks()[idx].label.toLowerCase() : `koltuk ${Math.floor(idx / cols) + 1}-${(idx % cols) + 1}`;
 
       const matchLabel = label.includes(query);
       const matchNum = seatNumStr === query;
-      const matchState = labelFor(state).toLowerCase().includes(query);
-      const matchTier = sale && sale.label.toLowerCase().includes(query);
-      const matchPayment = sale && paymentLabel(sale.payment)?.toLowerCase().includes(query);
+      const matchState = !pooled && labelFor(state).toLowerCase().includes(query);
+      const matchTier = sales.some(s => s.label.toLowerCase().includes(query));
+      const matchPayment = sales.some(s => paymentLabel(s.payment)?.toLowerCase().includes(query));
 
       isMatch = matchLabel || matchNum || matchState || matchTier || matchPayment;
     }
@@ -2127,6 +2714,13 @@ function applyFilterAndSearch(){
 const SEAT_STATE_SHORT = { empty: 'e', male: 'm', female: 'f' };
 const SEAT_STATE_LONG = { e: 'empty', m: 'male', f: 'female' };
 
+// Aynı fikir, satış kayıtlarındaki ödeme yöntemi için — "kart"/"nakit" yerine
+// "k"/"n". seat_states'ten farklı olarak bu tek bir alanı ~4 byte küçültüyor
+// ama bir etkinlikte yüzlerce satış kaydı olabildiğinden toplamda anlamlı
+// (bkz. optimizasyon notu). Okurken iki formatı da kabul ediyoruz.
+const PAYMENT_SHORT = { kart: 'k', nakit: 'n' };
+const PAYMENT_LONG = { k: 'kart', n: 'nakit' };
+
 function encodeSeatStates(states){
   return states.map(s => SEAT_STATE_SHORT[s] || s);
 }
@@ -2135,6 +2729,37 @@ function decodeSeatStates(states){
 }
 function isSeatTaken(state){
   return !!state && state !== 'empty' && state !== 'e';
+}
+
+// ===== Futbol Sahası kapasiteli blok yardımcıları =====
+// Diğer venue türlerinde seatStates[idx] bir DURUM ('e'/'m'/'f'), stadyumda
+// ise SATILAN BİLET SAYISI (tam sayı). Number() üzerinden okuyoruz ki eski/
+// göçmemiş bir kayıt ('e' gibi bir string) NaN->0 olarak güvenle çözülsün.
+function blockSoldCount(idx){
+  const n = Number(seatStates[idx]);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// seatSales[idx] diğer venue türlerinde tek bir satış nesnesi ya da null;
+// stadyumda ise bir DİZİ (bloktaki her bilet kendi kaydıyla). Bu yardımcı
+// ikisini de her zaman bir DİZİ olarak döndürür — eski/göçmemiş tekil bir
+// kayıt varsa onu da [kayit] olarak sarar, böylece istatistik/rapor/check-in
+// kodu tek bir yoldan (her zaman dizi üzerinden) çalışabilir.
+function salesAt(idx){
+  const v = seatSales[idx];
+  if(!v) return [];
+  // .filter(Boolean): eski bir RPC/veri göçü hatası bir diziye null
+  // sızdırmış olabilir (bkz. supabase-setup.sql'deki jsonb_typeof notu) —
+  // burada temizlemezsek her okuyucu (istatistik, check-in, "Ciro Özeti"...)
+  // s.ticketCode/s.label gibi bir alana erişirken patlardı.
+  return (Array.isArray(v) ? v : [v]).filter(Boolean);
+}
+
+// Tüm satışları (venue türünden bağımsız) tek düz bir dizi olarak döner —
+// istatistik/rapor/check-in kodu artık seatSales[idx]'in tekil nesne mi dizi
+// mi olduğuyla uğraşmadan tek bir yoldan çalışabiliyor.
+function allSalesFlat(){
+  return seatSales.flatMap((_, idx) => salesAt(idx));
 }
 
 function pushSeatStates(){
@@ -2187,6 +2812,20 @@ function pushVenueType(){
   }, 400);
 }
 
+// Genel Etkinlik'in tek giriş havuzunun kapasitesi (events.general_capacity)
+// — diğer venue türlerinde hiç okunmuyor.
+function pushGeneralCapacity(){
+  if(!supabaseClient || isApplyingRemote || !currentEventId) return;
+  clearTimeout(pushTimerGeneralCapacity);
+  pushTimerGeneralCapacity = setTimeout(async () => {
+    const { error } = await supabaseClient.from('events').update({
+      general_capacity: GENERAL_CAPACITY,
+      updated_at: new Date().toISOString(),
+    }).eq('id', currentEventId);
+    if(error) console.warn('Supabase (events) güncelleme hatası:', error.message);
+  }, 400);
+}
+
 function pushSalesData(){
   if(!supabaseClient || isApplyingRemote || !canEdit() || !currentEventId) return;
   clearTimeout(pushTimerSalesData);
@@ -2224,6 +2863,8 @@ function applySeatsPayload(row){
   TICKET_TIERS = Array.isArray(row.tiers) && row.tiers.length ? row.tiers : [...DEFAULT_TIERS];
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   POSTER_URL = safeImageUrl(row.poster_url);
+  EVENT_NOTE = typeof row.note === 'string' && row.note.trim() ? row.note : null;
+  GENERAL_CAPACITY = Number(row.general_capacity) > 0 ? Number(row.general_capacity) : DEFAULT_GENERAL_CAPACITY;
   // İsmi buradan da yazıyoruz: paylaşılan bir linkle doğrudan girildiğinde
   // etkinlik listesi henüz yüklenmemiş oluyor ve başlık boş kalıyordu.
   // (Yönetici etkinliği yeniden adlandırırsa da bu sayede anında güncellenir.)
@@ -2242,6 +2883,7 @@ function applySeatsPayload(row){
   renderTierList();
   renderDiscountList();
   renderPosterEditor();
+  renderNoteEditor();
   renderDynamicPricingEditor();
 
   isApplyingRemote = false;
@@ -2316,6 +2958,24 @@ async function ensureEventSalesSync(eventId){
 
 function computeOccupancy(ev){
   const states = Array.isArray(ev.seat_states) ? ev.seat_states : [];
+
+  if(ev.venue_type === 'futbol' || ev.venue_type === 'genel'){
+    // Bu liste satırındaki 'ev' aktif olarak açık etkinlik olmayabilir, o
+    // yüzden global seatStates'e bakan blockSoldCount() yerine
+    // ev.seat_states üzerinde aynı Number()-tabanlı çözümü doğrudan
+    // uyguluyoruz. Futbolda kapasite sabit (STADIUM_BLOCKS), Genel
+    // Etkinlik'te ise etkinliğin kendi general_capacity'sinden okunuyor.
+    const total = ev.venue_type === 'futbol'
+      ? STADIUM_BLOCKS.reduce((sum, b) => sum + b.capacity, 0)
+      : (Number(ev.general_capacity) > 0 ? Number(ev.general_capacity) : DEFAULT_GENERAL_CAPACITY);
+    const filled = states.reduce((sum, s) => {
+      const n = Number(s);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+    return { total, filled, pct };
+  }
+
   const total = states.length;
   const filled = states.filter(isSeatTaken).length;
   const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
@@ -2408,10 +3068,11 @@ function renderEventList(){
     card.innerHTML = `
       <div class="event-card-top">
         <span class="event-venue-badge"></span>
-        <span class="event-status-badge" data-status="${ev.status}"></span>
+        <span class="event-status-badge"></span>
       </div>
       <h3 class="event-card-name"></h3>
       <p class="event-card-date"></p>
+      <p class="event-card-note" hidden></p>
       <div class="event-card-occupancy">
         <div class="capacity-bar-bg"><div class="capacity-bar" style="width:${pct}%"></div></div>
         <span>%${pct} dolu · ${total} koltuk</span>
@@ -2437,11 +3098,20 @@ function renderEventList(){
 
     // textContent (not innerHTML) for anything derived from user-entered
     // event names — avoids injecting HTML from an admin-typed event name.
+    // ev.status'un kendisi de artık template string'e gömülmüyor —
+    // .dataset ataması her zaman düz metin olarak yazılır, attribute'tan
+    // kaçıp HTML enjekte etme riski taşımaz (bkz. güvenlik denetimi).
     card.querySelector('.event-venue-badge').textContent = venueLabel;
     card.querySelector('.event-status-badge').textContent = statusLabel;
+    card.querySelector('.event-status-badge').dataset.status = ev.status;
     card.querySelector('.event-card-name').textContent = ev.name;
     card.querySelector('.event-card-date').textContent = formatEventDate(ev.event_date);
     card.querySelector('.event-archive-btn').textContent = ev.status === 'archived' ? 'Aktifleştir' : 'Arşivle';
+    if(typeof ev.note === 'string' && ev.note.trim()){
+      const noteEl = card.querySelector('.event-card-note');
+      noteEl.textContent = ev.note;
+      noteEl.hidden = false;
+    }
 
     card.querySelector('.event-enter-btn').addEventListener('click', () => enterEvent(ev.id, ev.name));
     card.querySelector('.event-archive-btn').addEventListener('click', () => toggleArchiveEvent(ev));
@@ -2516,9 +3186,16 @@ async function deleteEventRow(ev){
 }
 
 function toggleNewEventDimsVisibility(){
-  const isFutbol = newEventVenue.value === 'futbol';
-  newEventDimsRow.hidden = isFutbol;
-  newEventStadiumNote.hidden = !isFutbol;
+  const vType = newEventVenue.value;
+  const isFutbol = vType === 'futbol';
+  const isGenel = vType === 'genel';
+  newEventDimsRow.hidden = isFutbol || isGenel;
+  newEventStadiumNote.hidden = !(isFutbol || isGenel);
+  if(isFutbol){
+    newEventStadiumNote.textContent = `Futbol Sahası için sabit ${STADIUM_BLOCKS.length} bloklu stadyum düzeni kullanılır.`;
+  } else if(isGenel){
+    newEventStadiumNote.textContent = 'Genel Etkinlik ücretsiz/biletsiz tek bir giriş havuzudur — koltuk numarası ve bilet türü/fiyat yok, sadece toplam kapasite. Kapasiteyi oluşturduktan sonra ayarlayabilirsin.';
+  }
 }
 
 function openCreateEventModal(){
@@ -2546,15 +3223,31 @@ async function createEvent(){
   const date = newEventDate.value || null;
   const vType = newEventVenue.value;
 
-  let evCols, evRows, states;
+  // general_capacity sütunu "not null" — diğer venue türlerinde hiç
+  // okunmuyor ama insert'e AÇIKÇA null geçmek Postgres'te varsayılan
+  // değeri (500) devre dışı bırakıp not-null ihlali veriyordu, bu yüzden
+  // burada da varsayılana çekiliyor.
+  let evCols, evRows, states, evTiers, evGeneralCapacity = DEFAULT_GENERAL_CAPACITY;
   if(vType === 'futbol'){
     evCols = STADIUM_BLOCKS.length;
     evRows = 1;
-    states = new Array(STADIUM_BLOCKS.length).fill('empty');
+    // Stadyumda "boş" 0 (satılan bilet sayısı) — bkz. blockSoldCount.
+    states = new Array(STADIUM_BLOCKS.length).fill(0);
+    evTiers = DEFAULT_STADIUM_TIERS;
+  } else if(vType === 'genel'){
+    // Genel Etkinlik'te koltuk numarası da bilet türü/fiyat da yok — tek bir
+    // ücretsiz giriş havuzu (bkz. poolBlocks/joinGeneralEvent). "boş" burada
+    // da 0 (katılan kişi sayısı).
+    evGeneralCapacity = DEFAULT_GENERAL_CAPACITY;
+    evCols = 1;
+    evRows = 1;
+    states = [0];
+    evTiers = [];
   } else {
     evCols = Math.min(40, Math.max(1, Number(newEventCols.value) || 10));
     evRows = Math.min(30, Math.max(1, Number(newEventRows.value) || 8));
     states = new Array(evCols * evRows).fill('empty');
+    evTiers = DEFAULT_TIERS;
   }
 
   submitCreateEventBtn.disabled = true;
@@ -2562,14 +3255,20 @@ async function createEvent(){
     const { data, error } = await supabaseClient.from('events').insert({
       name, event_date: date, venue_type: vType,
       cols: evCols, rows: evRows, seat_states: encodeSeatStates(states),
-      tiers: vType === 'futbol' ? DEFAULT_STADIUM_TIERS : DEFAULT_TIERS,
+      tiers: evTiers, general_capacity: evGeneralCapacity,
       poster_url: safeImageUrl(newEventPoster.value), status: 'active',
     }).select().single();
     if(error) throw error;
 
+    // Havuzlu türlerde (futbol/genel) her göze bir DİZİ gerekiyor, boş → null
+    // değil []. null bırakılırsa purchase_stadium_block RPC'sindeki
+    // "coalesce(...) || p_sales" ilk satın almada diziye bastan sızan bir
+    // null sokuyordu (bkz. supabase-setup.sql notu) — RPC artık bunu da
+    // kendi tarafında güvenceye aldı, ama kaynağında da doğru olsun.
+    const emptySale = (vType === 'futbol' || vType === 'genel') ? [] : null;
     const { error: salesError } = await supabaseClient.from('event_sales').insert({
       event_id: data.id,
-      seat_sales: new Array(states.length).fill(null),
+      seat_sales: new Array(states.length).fill(emptySale),
     });
     if(salesError) throw salesError;
 
@@ -2650,6 +3349,9 @@ async function enterEvent(id, nameHint, skipUrl){
   TICKET_TIERS = [...DEFAULT_TIERS];
   DISCOUNT_CODES = [];
   POSTER_URL = null;
+  EVENT_NOTE = null;
+  eventNoteDisplay.hidden = true;
+  GENERAL_CAPACITY = DEFAULT_GENERAL_CAPACITY;
   DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC };
 
   eventListView.hidden = true;
@@ -2693,7 +3395,6 @@ backToEventsBtn.addEventListener('click', () => exitEvent());
 
 function enterApp(role){
   currentRole = role;
-  sessionStorage.setItem(ROLE_SESSION_KEY, role);
   appRoot.dataset.role = role;
   // Modaller (koltuk/bilet/check-in) DOM'da #appRoot disinda yasiyor --
   // rol bilgisi body'de de olmali yoksa oradaki editor-only/admin-only
@@ -2722,28 +3423,54 @@ function enterApp(role){
   }
 }
 
-// guestLoginBtn admin.html'de yok (personel-only sayfa), salesLoginBtn/
-// adminLoginBtn index.html'de yok (misafir-only sayfa) — bkz. admin.html.
+// guestLoginBtn admin.html'de yok (personel-only sayfa) — bkz. admin.html.
 guestLoginBtn?.addEventListener('click', () => enterApp('guest'));
 
-function showPasswordRow(role){
-  pendingLoginRole = role;
-  passwordRow.hidden = false;
-  loginError.hidden = true;
-  passwordInput.value = '';
-  passwordInput.focus();
+// Personelin veritabanindaki GERCEK rolunu (profiles.role) okur. Girisin
+// kendisi basarili olsa bile (dogru e-posta/sifre), eger bu hesabin rolu bu
+// sayfanin bekledigi rolle (pendingLoginRole: 'sales'/'admin') eslesmiyorsa
+// -- ornegin bir satis hesabiyla yonetici.html'e girilmeye calisiliyorsa --
+// oturum hemen kapatilir. Rol artik client'in soyledigi bir sey degil,
+// veritabaninin (current_staff_role()/profiles) dogruladigi bir sey.
+async function fetchStaffRole(userId){
+  const { data, error } = await supabaseClient
+    .from('profiles').select('role').eq('id', userId).maybeSingle();
+  if(error) throw error;
+  return data ? data.role : null;
 }
-salesLoginBtn?.addEventListener('click', () => showPasswordRow('sales'));
-adminLoginBtn?.addEventListener('click', () => showPasswordRow('admin'));
 
-function tryPasswordLogin(){
-  const expected = pendingLoginRole === 'admin' ? ADMIN_PASSWORD : SALES_PASSWORD;
-  if(passwordInput.value === expected){
+async function tryPasswordLogin(){
+  if(!supabaseClient) return;
+  const email = (emailInput?.value || '').trim();
+  const password = passwordInput.value;
+  if(!email || !password){
+    loginError.textContent = 'E-posta ve şifre gir.';
+    loginError.hidden = false;
+    return;
+  }
+
+  passwordSubmit.disabled = true;
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if(error) throw error;
+
+    const role = await fetchStaffRole(data.user.id);
+    if(role !== pendingLoginRole){
+      await supabaseClient.auth.signOut();
+      loginError.textContent = 'Bu hesabın bu sayfaya giriş yetkisi yok.';
+      loginError.hidden = false;
+      return;
+    }
+
     loginError.hidden = true;
     passwordInput.value = '';
-    enterApp(pendingLoginRole);
-  } else {
+    enterApp(role);
+  } catch(err){
+    console.warn('Giriş başarısız.', err);
+    loginError.textContent = 'Hatalı e-posta veya şifre.';
     loginError.hidden = false;
+  } finally {
+    passwordSubmit.disabled = false;
   }
 }
 passwordSubmit.addEventListener('click', tryPasswordLogin);
@@ -2753,19 +3480,35 @@ passwordInput.addEventListener('keydown', (e) => {
     tryPasswordLogin();
   }
 });
+emailInput?.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    tryPasswordLogin();
+  }
+});
 
-logoutBtn.addEventListener('click', () => {
-  sessionStorage.removeItem(ROLE_SESSION_KEY);
+logoutBtn.addEventListener('click', async () => {
+  if(supabaseClient) await supabaseClient.auth.signOut();
   sessionStorage.removeItem(EVENT_SESSION_KEY);
   currentRole = null;
-  pendingLoginRole = null;
   delete document.body.dataset.role;
   appRoot.hidden = true;
   loginGate.hidden = false;
-  passwordRow.hidden = true;
   passwordInput.value = '';
   loginError.hidden = true;
   setBulkMode(false);
+
+  // satis.html/yonetici.html tek-rollü sayfalar — rol seçim ekranı yok, o
+  // yüzden çıkış sonrası init()'teki gibi şifre/e-posta alanı doğrudan
+  // tekrar gösterilip odaklanmalı, yoksa kullanıcı boş bir login kartıyla kalır.
+  const page = document.body.dataset.page;
+  if(page === 'sales' || page === 'admin'){
+    pendingLoginRole = page;
+    passwordRow.hidden = false;
+    emailInput?.focus();
+  } else {
+    passwordRow.hidden = true;
+  }
 
   clearPushTimers();
   unsubscribeEventChannels();
@@ -2781,7 +3524,7 @@ logoutBtn.addEventListener('click', () => {
 });
 
 // Init: restore previous session (role + last-open event), otherwise show the login gate
-(function init(){
+(async function init(){
   setupFilters();
 
   const searchInput = document.getElementById('seatSearchInput');
@@ -2806,18 +3549,35 @@ logoutBtn.addEventListener('click', () => {
   // index.html (data-page="public") = müşteri sitesi: personel girişi hiç
   // gösterilmez, her ziyaret otomatik misafir olarak başlar — diğer e-bilet
   // sitelerinde olduğu gibi. satis.html (data-page="sales") ve
-  // yonetici.html (data-page="admin") kendi rolüne ait bir oturum varsa
-  // otomatik girer, yoksa doğrudan o role ait şifre alanına odaklanır
-  // (rol seçim ekranı yok — hangi role ait olduğu URL'den zaten belli).
+  // yonetici.html (data-page="admin") kendi rolüne ait GERÇEK bir Supabase
+  // Auth oturumu varsa (bkz. tryPasswordLogin) otomatik girer — eskiden
+  // burada client'in kendi yazdığı bir sessionStorage bayrağına bakılıyordu,
+  // yani "girişli" olmak sadece bir tarayıcı değişkeniydi. Artık gerçek
+  // oturum + veritabanındaki profiles.role kontrol ediliyor.
   const page = document.body.dataset.page;
-  const existingRole = sessionStorage.getItem(ROLE_SESSION_KEY);
 
   if(page === 'sales' || page === 'admin'){
-    if(existingRole === page){
-      enterApp(existingRole);
+    pendingLoginRole = page;
+    let role = null;
+    let session = null;
+    if(supabaseClient){
+      try {
+        const sessionRes = await supabaseClient.auth.getSession();
+        session = sessionRes.data.session;
+        if(session) role = await fetchStaffRole(session.user.id);
+      } catch(err){
+        console.warn('Oturum kontrol edilemedi.', err);
+      }
+    }
+    if(role === page){
+      enterApp(role);
     } else {
-      pendingLoginRole = page;
-      passwordInput.focus();
+      // Bir oturum var ama rolü bu sayfayla eşleşmiyor (ör. satış hesabıyla
+      // yönetici.html'e girilmiş) — yarım/karışık bir durumda bırakmamak
+      // için oturumu burada kapatıyoruz, kullanıcı temiz bir giriş ekranı görür.
+      if(session && supabaseClient) await supabaseClient.auth.signOut();
+      passwordRow.hidden = false;
+      emailInput?.focus();
     }
   } else {
     enterApp('guest');
