@@ -149,9 +149,12 @@ grant usage on schema public to anon, authenticated;
 -- hem yukaridaki RLS'le artik zaten calismaz (anon'un event_sales SELECT
 -- yetkisi yok) hem de gereksiz yere agir bir veri transferiydi. Bu fonksiyon
 -- aramayi sunucuda yapip SADECE eslesen tek bileti donduruyor.
+-- (seat_pos kolonu eklenince donus tipi degisti -- create or replace bunu
+-- kabul etmiyor, once eski imzayla drop etmek gerekiyor.)
+drop function if exists find_ticket_by_code(text);
 create or replace function find_ticket_by_code(p_code text)
 returns table(
-  event_id uuid, seat_idx int, sale jsonb,
+  event_id uuid, seat_idx int, seat_pos int, sale jsonb,
   event_name text, event_venue_type text, event_cols int, event_rows int,
   event_accessible_seats jsonb
 )
@@ -164,6 +167,7 @@ declare
   v_entry jsonb;
   v_candidates jsonb;
   v_found jsonb;
+  v_found_pos int;
 begin
   for v_row in select es.event_id, es.seat_sales from event_sales es loop
     for v_idx in 0 .. coalesce(jsonb_array_length(v_row.seat_sales), 1) - 1 loop
@@ -173,12 +177,21 @@ begin
       end if;
       v_candidates := case when jsonb_typeof(v_entry) = 'array' then v_entry else jsonb_build_array(v_entry) end;
 
-      select c into v_found from jsonb_array_elements(v_candidates) c
-      where c ->> 'ticketCode' = p_code limit 1;
+      v_found := null;
+      select c.value, (c.ord - 1)::int into v_found, v_found_pos
+      from jsonb_array_elements(v_candidates) with ordinality as c(value, ord)
+      where c.value ->> 'ticketCode' = p_code limit 1;
 
       if v_found is not null then
+        -- seat_pos: futbol bloklarinda artik her koltuk kendi konumuyla
+        -- tutuluyor (bkz. purchase_stadium_seat) -- iptal ederken hangi
+        -- RPC'nin (cancel_ticket/cancel_stadium_seat) kullanilacagina
+        -- client bu deger dolu mu diye bakarak karar veriyor. Dizi
+        -- olmayan (tekil nesne) satislarda hep NULL.
         return query
-          select v_row.event_id, v_idx, v_found, e.name, e.venue_type, e.cols, e.rows, e.accessible_seats
+          select v_row.event_id, v_idx,
+                 (case when jsonb_typeof(v_entry) = 'array' then v_found_pos else null end),
+                 v_found, e.name, e.venue_type, e.cols, e.rows, e.accessible_seats
           from events e where e.id = v_row.event_id;
         return;
       end if;
@@ -188,6 +201,60 @@ begin
 end;
 $$;
 grant execute on function find_ticket_by_code(text) to anon, authenticated;
+
+-- Eskiden burada telefon+demo-OTP vardı (kod client'ta üretilip ekranda
+-- gösteriliyordu, gerçek bir SMS gitmiyordu). Artık gerçek Supabase Auth
+-- e-posta OTP'si kullanılıyor (bkz. script.js) — bu yüzden bu fonksiyon
+-- kaldırılıp e-posta eşleniği ekleniyor.
+drop function if exists find_tickets_by_phone(text);
+
+-- E-postayla giriş yapmış bir misafirin TÜM biletlerini (birden fazla
+-- etkinlik/satış olabilir) bulur — find_ticket_by_code'un çoklu-sonuç
+-- versiyonu. E-posta kimliği artık GERÇEK — Supabase Auth kendi OTP'sini
+-- gönderiyor (signInWithOtp/verifyOtp), client'ta üretilen bir kod yok.
+-- (seat_pos kolonu eklenince donus tipi degisebilir -- guvenlik icin once drop.)
+drop function if exists find_tickets_by_email(text);
+create or replace function find_tickets_by_email(p_email text)
+returns table(
+  event_id uuid, seat_idx int, seat_pos int, sale jsonb,
+  event_name text, event_venue_type text, event_cols int, event_rows int,
+  event_accessible_seats jsonb
+)
+language plpgsql
+security definer
+as $$
+declare
+  v_row record;
+  v_idx int;
+  v_entry jsonb;
+  v_candidates jsonb;
+  v_elem record;
+begin
+  for v_row in select es.event_id, es.seat_sales from event_sales es loop
+    for v_idx in 0 .. coalesce(jsonb_array_length(v_row.seat_sales), 1) - 1 loop
+      v_entry := v_row.seat_sales -> v_idx;
+      if v_entry is null or jsonb_typeof(v_entry) = 'null' then
+        continue;
+      end if;
+      v_candidates := case when jsonb_typeof(v_entry) = 'array' then v_entry else jsonb_build_array(v_entry) end;
+
+      for v_elem in select c.value as sale, (c.ord - 1)::int as pos
+        from jsonb_array_elements(v_candidates) with ordinality as c(value, ord)
+      loop
+        if lower(v_elem.sale ->> 'buyerEmail') = lower(p_email) then
+          return query
+            select v_row.event_id, v_idx,
+                   (case when jsonb_typeof(v_entry) = 'array' then v_elem.pos else null end),
+                   v_elem.sale, e.name, e.venue_type, e.cols, e.rows, e.accessible_seats
+            from events e where e.id = v_row.event_id;
+        end if;
+      end loop;
+    end loop;
+  end loop;
+  return;
+end;
+$$;
+grant execute on function find_tickets_by_email(text) to anon, authenticated;
 
 -- ALTER PUBLICATION ... ADD TABLE'in IF NOT EXISTS'i yok -- daha once
 -- eklenmisse hata firlatip scriptin geri kalanini (asagidaki fonksiyon dahil)
@@ -531,6 +598,39 @@ from (
 where e.id = sub.id;
 
 -- ============================================================
+-- FUTBOL BLOKLARI: HAVUZDAN TEK-TEK KOLTUK TAKIBINE GOC
+-- ============================================================
+-- Futbol bloklarinda seat_states[blockIdx] eskiden bir TAM SAYIYDI (o
+-- bloktan satilan bilet SAYISI); artik bir DIZI -- bloktaki HER koltugun
+-- kendi durumu (bkz. purchase_stadium_seat). Bu migrasyon mevcut sayiyi o
+-- kadar 'm' iceren bir diziye ceviriyor (gercek cinsiyet bilinmiyor, sadece
+-- gorsel bir varsayim -- eski veride hic tutulmuyordu). event_sales.seat_sales
+-- zaten (bos konumlar olmadan, sirali) bir dizi oldugundan DOKUNULMUYOR --
+-- ilk N pozisyon gercek satislarla eslesiyor, kalan (capacity - N) pozisyon
+-- client ilk blok acilista pad ediyor (bkz. script.js enterBlockView).
+-- jsonb_typeof(...) = 'array' kontrolu sayesinde script'i tekrar
+-- calistirmak zaten-goc-etmis satirlari bozmuyor (idempotent).
+update events e
+set seat_states = sub.new_states
+from (
+  select ev.id,
+         jsonb_agg(
+           case
+             when jsonb_typeof(elem) = 'number' then
+               (select coalesce(jsonb_agg('"m"'::jsonb), '[]'::jsonb) from generate_series(1, (elem)::int))
+             else elem
+           end
+           order by ord
+         ) as new_states
+  from events ev,
+       lateral jsonb_array_elements(ev.seat_states) with ordinality as a(elem, ord)
+  where ev.venue_type = 'futbol'
+    and jsonb_typeof(ev.seat_states) = 'array'
+  group by ev.id
+) sub
+where e.id = sub.id;
+
+-- ============================================================
 -- BILET IPTALI (musterinin kendi bileti)
 -- ============================================================
 -- Yetkilendirme bilet kodunun kendisi: kodu bilmeyen iptal edemez.
@@ -706,6 +806,98 @@ begin
 end;
 $$;
 grant execute on function cancel_stadium_ticket(uuid, int, text) to anon, authenticated;
+
+-- ============================================================
+-- FUTBOL SAHASI: BLOK ICINDE TEK TEK KOLTUK TAKIBI
+-- ============================================================
+-- purchase_stadium_block/cancel_stadium_ticket yukarida bir bloğu tek bir
+-- HAVUZ olarak ele aliyordu (kim hangi koltugu aldi bilinmiyordu, sadece
+-- "kac tane satildi" sayiliyordu). Bu iki fonksiyon bunun yerine, bir blok
+-- ICINDE her koltugu ayri ayri takip eder -- tipki sinema/tiyatrodaki tek
+-- koltuk modeli gibi, sadece bir ust seviye (blok indexi) daha var:
+--   events.seat_states[blockIdx][seatPos]      -> DURUM ('e'/'m'/'f')
+--   event_sales.seat_sales[blockIdx][seatPos]  -> satis kaydi ya da null
+create or replace function purchase_stadium_seat(
+  p_event_id uuid, p_block_idx int, p_seat_pos int, p_gender text, p_sale jsonb, p_token text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not validate_sale_price(p_event_id, p_sale ->> 'tier', (p_sale ->> 'price')::numeric) then
+    raise exception 'INVALID_PRICE';
+  end if;
+
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_block_idx and expires_at < now();
+  if exists (
+    select 1 from seat_holds
+    where event_id = p_event_id and seat_idx = p_block_idx and (p_token is null or hold_token <> p_token)
+  ) then
+    raise exception 'SEAT_HELD';
+  end if;
+
+  -- Atomik "hala bos mu" kontrolu: WHERE kosulu UPDATE ile ayni satirda
+  -- degerlendirildigi icin iki alici ayni koltuga ayni anda tiklarsa
+  -- sadece biri kazanir.
+  update events
+  set seat_states = jsonb_set(
+        seat_states, array[p_block_idx::text, p_seat_pos::text], to_jsonb(p_gender)
+      ),
+      updated_at = now()
+  where id = p_event_id
+    and (seat_states -> p_block_idx -> p_seat_pos) #>> '{}' in ('e', 'empty');
+
+  if not found then
+    raise exception 'SEAT_UNAVAILABLE';
+  end if;
+
+  update event_sales
+  set seat_sales = jsonb_set(seat_sales, array[p_block_idx::text, p_seat_pos::text], p_sale),
+      updated_at = now()
+  where event_id = p_event_id;
+end;
+$$;
+grant execute on function purchase_stadium_seat(uuid, int, int, text, jsonb, text) to anon, authenticated;
+
+-- Blok icindeki TEK bir koltugu iptal eder -- kodu bilmeyen iptal edemez
+-- (cancel_ticket ile ayni yetkilendirme mantigi), kapidan giris yapilmis
+-- bir bilet iptal edilemez.
+create or replace function cancel_stadium_seat(p_event_id uuid, p_block_idx int, p_seat_pos int, p_ticket_code text)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_sale jsonb;
+begin
+  select seat_sales -> p_block_idx -> p_seat_pos into v_sale
+  from event_sales where event_id = p_event_id;
+
+  if v_sale is null or jsonb_typeof(v_sale) = 'null' then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  if v_sale ->> 'ticketCode' is distinct from p_ticket_code then
+    raise exception 'TICKET_NOT_FOUND';
+  end if;
+
+  if coalesce((v_sale ->> 'checkedIn')::boolean, false) then
+    raise exception 'ALREADY_CHECKED_IN';
+  end if;
+
+  update events
+  set seat_states = jsonb_set(seat_states, array[p_block_idx::text, p_seat_pos::text], '"e"'::jsonb),
+      updated_at = now()
+  where id = p_event_id;
+
+  update event_sales
+  set seat_sales = jsonb_set(seat_sales, array[p_block_idx::text, p_seat_pos::text], 'null'::jsonb),
+      updated_at = now()
+  where event_id = p_event_id;
+end;
+$$;
+grant execute on function cancel_stadium_seat(uuid, int, int, text) to anon, authenticated;
 
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra

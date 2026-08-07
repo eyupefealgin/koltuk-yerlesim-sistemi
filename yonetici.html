@@ -310,7 +310,6 @@
       </svg>
     </button>
     <h3 id="seatModalTitle">Koltuk</h3>
-    <p class="hold-countdown" id="stadiumBlockCapacityInfo" hidden></p>
     <p class="hold-countdown" id="holdCountdown" hidden></p>
 
     <div class="modal-step-panel" data-panel="gender">
@@ -326,19 +325,11 @@
       <div class="modal-choice-row" id="modalTierButtons"></div>
     </div>
 
-    <!-- Sadece futbol bloklarında: tür blok tarafından zaten sabit, burada
-         kaç bilet alınacağı soruluyor. -->
-    <div class="modal-step-panel" data-panel="quantity" hidden>
-      <p class="modal-subhead">2. Adet Seç</p>
-      <p class="buyer-note" id="stadiumQuantityInfo"></p>
-      <input type="number" id="stadiumQuantityInput" class="buyer-name-input" min="1" step="1" value="1" inputmode="numeric">
-      <p class="price-summary" id="stadiumQuantityPrice"></p>
-      <button class="btn btn-primary" id="stadiumQuantityContinueBtn" type="button">Devam Et</button>
-    </div>
 
     <div class="modal-step-panel" data-panel="buyer" hidden>
       <p class="modal-subhead">3. Alıcı Bilgisi</p>
       <input type="text" id="buyerNameInput" class="buyer-name-input" maxlength="60" placeholder="Ad Soyad">
+      <input type="email" id="buyerEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta (opsiyonel — 'Biletlerim' için)">
       <p class="buyer-note" id="buyerNoteText"></p>
       <button class="btn btn-primary" id="buyerContinueBtn" type="button">Devam Et</button>
     </div>

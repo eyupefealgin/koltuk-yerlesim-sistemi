@@ -1264,6 +1264,19 @@ select option{
 }
 .seat-grid.general-mode .stadium-block.sold{ background: var(--gold-subtle); }
 
+/* Bir stadyum bloğunun İÇİNDE tek tek koltuk seçimi (bkz. enterBlockView/
+   renderBlockSeatGrid) — sütun sayısı JS'te satır içi stil olarak
+   ayarlanıyor (kapasitenin karekökü), burada sadece geri dön butonunun
+   ızgarayı bölmemesi ve satır yüksekliği ayarlanıyor. */
+.seat-grid.block-seat-mode{
+  grid-auto-rows: 50px;
+}
+.block-back-btn{
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+  justify-self: start;
+}
+
 /* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
 .stadium-legend{
   display: flex;

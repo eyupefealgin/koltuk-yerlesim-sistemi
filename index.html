@@ -89,6 +89,7 @@
     <h2>Etkinlikler</h2>
     <div class="event-list-header-actions">
       <button class="btn btn-ghost-gold" id="openMyTicketBtn" type="button">Biletim Var</button>
+      <button class="btn btn-ghost-gold" id="emailLoginBtn" type="button">Giriş Yap</button>
       <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
     </div>
   </div>
@@ -324,7 +325,6 @@
       </svg>
     </button>
     <h3 id="seatModalTitle">Koltuk</h3>
-    <p class="hold-countdown" id="stadiumBlockCapacityInfo" hidden></p>
     <p class="hold-countdown" id="holdCountdown" hidden></p>
 
     <div class="modal-step-panel" data-panel="gender">
@@ -340,19 +340,10 @@
       <div class="modal-choice-row" id="modalTierButtons"></div>
     </div>
 
-    <!-- Sadece futbol bloklarında: tür blok tarafından zaten sabit, burada
-         kaç bilet alınacağı soruluyor. -->
-    <div class="modal-step-panel" data-panel="quantity" hidden>
-      <p class="modal-subhead">2. Adet Seç</p>
-      <p class="buyer-note" id="stadiumQuantityInfo"></p>
-      <input type="number" id="stadiumQuantityInput" class="buyer-name-input" min="1" step="1" value="1" inputmode="numeric">
-      <p class="price-summary" id="stadiumQuantityPrice"></p>
-      <button class="btn btn-primary" id="stadiumQuantityContinueBtn" type="button">Devam Et</button>
-    </div>
-
     <div class="modal-step-panel" data-panel="buyer" hidden>
       <p class="modal-subhead">3. Alıcı Bilgisi</p>
       <input type="text" id="buyerNameInput" class="buyer-name-input" maxlength="60" placeholder="Ad Soyad">
+      <input type="email" id="buyerEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta (opsiyonel — 'Biletlerim' için)">
       <p class="buyer-note" id="buyerNoteText"></p>
       <button class="btn btn-primary" id="buyerContinueBtn" type="button">Devam Et</button>
     </div>
@@ -513,6 +504,40 @@
     <div class="my-ticket-history" id="myTicketHistory" hidden>
       <p class="buyer-note">Bu cihazda daha önce aldığın biletler:</p>
       <div class="my-ticket-history-list" id="myTicketHistoryList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ E-POSTA İLE GİRİŞ MODAL ============ -->
+<!-- Gerçek bir Supabase Auth e-posta OTP akışı — kod client'ta ÜRETİLMİYOR,
+     Supabase kendi sunucusundan gerçek bir e-posta gönderiyor
+     (signInWithOtp/verifyOtp, bkz. script.js). -->
+<div class="modal-overlay" id="emailLoginOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="emailLoginTitle">
+    <button class="modal-close" id="emailLoginClose" type="button" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <h3 id="emailLoginTitle">E-posta ile Giriş</h3>
+
+    <div class="email-step-panel" data-email-panel="email">
+      <p class="buyer-note">E-posta adresini gir, sana bir doğrulama kodu gönderelim.</p>
+      <input type="email" id="emailLoginEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta adresi">
+      <button class="btn btn-primary" id="emailLoginSendBtn" type="button">Kod Gönder</button>
+    </div>
+
+    <div class="email-step-panel" data-email-panel="code" hidden>
+      <p class="buyer-note" id="emailLoginCodeNote"></p>
+      <input type="text" id="emailLoginCodeInput" class="buyer-name-input" maxlength="6" inputmode="numeric" placeholder="6 haneli kod">
+      <button class="btn btn-primary" id="emailLoginVerifyBtn" type="button">Doğrula</button>
+      <p class="login-error" id="emailLoginError" hidden>Kod hatalı, tekrar dene.</p>
+    </div>
+
+    <div class="email-step-panel" data-email-panel="tickets" hidden>
+      <p class="buyer-note" id="myEmailTicketsNote"></p>
+      <div class="my-ticket-history-list" id="myEmailTicketsList"></div>
+      <button class="btn btn-ghost" id="emailLogoutBtn" type="button">Çıkış Yap</button>
     </div>
   </div>
 </div>

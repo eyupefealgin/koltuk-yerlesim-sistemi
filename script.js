@@ -4,8 +4,15 @@ const SUPABASE_KEY = 'sb_publishable_jhO5H_R_KNEvZfqkZMdVsQ_40S_NuyZ';
 // Named supabaseClient, not supabase — the library itself declares a global
 // `var supabase`, and redeclaring that name with const/let is a SyntaxError
 // that silently kills the whole script (no console output, nothing runs).
+// Personel (satis.html/yonetici.html) şifreyle, misafir (index.html) artık
+// e-posta+OTP ile gerçek bir Supabase Auth oturumu açabiliyor — ikisi de
+// AYNI tarayıcıda AYNI localStorage anahtarını kullanırsa (varsayılan
+// davranış) biri diğerinin oturumunu ezer. Sayfaya göre farklı bir
+// storageKey vererek bu çakışmayı önlüyoruz.
 const supabaseClient = window.supabase
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { storageKey: document.body.dataset.page === 'public' ? 'sb-guest-auth' : 'sb-staff-auth' },
+    })
   : null;
 
 let isApplyingRemote = false; // true while applying an incoming update, so we don't echo it straight back
@@ -289,16 +296,12 @@ const bulkCountEl = document.getElementById('bulkCount');
 const seatModalOverlay = document.getElementById('seatModalOverlay');
 const seatModalTitle = document.getElementById('seatModalTitle');
 const seatModalClose = document.getElementById('seatModalClose');
-const stadiumBlockCapacityInfoEl = document.getElementById('stadiumBlockCapacityInfo');
 const modalTierButtonsEl = document.getElementById('modalTierButtons');
-const stadiumQuantityInput = document.getElementById('stadiumQuantityInput');
-const stadiumQuantityInfoEl = document.getElementById('stadiumQuantityInfo');
-const stadiumQuantityPriceEl = document.getElementById('stadiumQuantityPrice');
-const stadiumQuantityContinueBtn = document.getElementById('stadiumQuantityContinueBtn');
 const modalInfoTextEl = document.getElementById('modalInfoText');
 const modalClearSeatBtn = document.getElementById('modalClearSeatBtn');
 const viewTicketBtn = document.getElementById('viewTicketBtn');
 const buyerNameInput = document.getElementById('buyerNameInput');
+const buyerEmailInput = document.getElementById('buyerEmailInput');
 const buyerNoteText = document.getElementById('buyerNoteText');
 const buyerContinueBtn = document.getElementById('buyerContinueBtn');
 const paymentDisclaimerEl = document.getElementById('paymentDisclaimer');
@@ -379,6 +382,22 @@ const myTicketCodeInput = document.getElementById('myTicketCodeInput');
 const myTicketFindBtn = document.getElementById('myTicketFindBtn');
 const myTicketResultEl = document.getElementById('myTicketResult');
 
+// E-posta ile giriş — gerçek Supabase Auth OTP (signInWithOtp/verifyOtp),
+// bkz. index.html notu. Sadece misafir sayfasında (index.html) var,
+// satis.html/yonetici.html'de yok — bu yüzden hepsi ?. ile erişiliyor.
+const emailLoginBtn = document.getElementById('emailLoginBtn');
+const emailLoginOverlay = document.getElementById('emailLoginOverlay');
+const emailLoginClose = document.getElementById('emailLoginClose');
+const emailLoginEmailInput = document.getElementById('emailLoginEmailInput');
+const emailLoginSendBtn = document.getElementById('emailLoginSendBtn');
+const emailLoginCodeNote = document.getElementById('emailLoginCodeNote');
+const emailLoginCodeInput = document.getElementById('emailLoginCodeInput');
+const emailLoginVerifyBtn = document.getElementById('emailLoginVerifyBtn');
+const emailLoginErrorEl = document.getElementById('emailLoginError');
+const myEmailTicketsNote = document.getElementById('myEmailTicketsNote');
+const myEmailTicketsList = document.getElementById('myEmailTicketsList');
+const emailLogoutBtn = document.getElementById('emailLogoutBtn');
+
 let cols = 10;
 let rows = 8;
 let seatStates = [];
@@ -397,13 +416,11 @@ let modalSeatIndices = null;  // bulk flow (array of indices)
 let modalGender = null;
 let modalTier = null;
 let modalBuyerName = '';
+let modalBuyerEmail = '';
 let modalHeldIdx = null;       // reserve_seat başarılı olduysa tutulan koltuk index'i
 let holdCountdownInterval = null;
 let holdExpiresAt = null;
 let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
-let stadiumTier = null;              // blok için sabit fiyat katmanı (STADIUM_BLOCKS[idx].tier)
-let stadiumRemainingCapacity = 0;    // modal açıldığı andaki kalan yer sayısı
-let stadiumQuantity = 1;             // kullanıcının seçtiği bilet adedi
 let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.discount_codes)
 let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
 let EVENT_NOTE = null;         // geçerli etkinliğin notu (events.note) — herkese açık
@@ -541,6 +558,10 @@ function generateGrid(preserve){
 
 function renderGrid(){
   if(isStadiumMode()){
+    if(activeBlockIdx !== null){
+      renderBlockSeatGrid();
+      return;
+    }
     renderStadiumGrid();
     return;
   }
@@ -600,7 +621,7 @@ function renderStadiumGrid(){
   }
   normalizeSalesLength();
 
-  seatGrid.classList.remove('general-mode');
+  seatGrid.classList.remove('general-mode', 'block-seat-mode');
   seatGrid.classList.add('stadium-mode');
   seatGrid.style.gridTemplateColumns = '';
   seatGrid.style.gridTemplateRows = '';
@@ -723,10 +744,10 @@ function handleSeatClick(idx, btn){
 
   if(!canPurchase()) return;
 
-  // Kapasiteli futbol bloğu "tek koltuk = tek alıcı" modelinde değil, toplu
-  // seçim/rezervasyon kilidi orada anlamsız (bkz. openStadiumBlockModal).
+  // Bir bloğa tıklamak artık o bloğun İÇİNE girer — koltuklar orada tek
+  // tek (sinema düzeni gibi) seçiliyor, bkz. enterBlockView.
   if(isStadiumMode()){
-    openStadiumBlockModal(idx);
+    enterBlockView(idx);
     return;
   }
   // Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — bilet türü/ödeme
@@ -815,6 +836,7 @@ startBulkSaleBtn.addEventListener('click', () => {
   if(bulkSelected.size === 0) return;
   modalSeatIndices = [...bulkSelected];
   modalSeatIdx = null;
+  modalBlockSeatPos = null;
   modalGender = null;
   modalTier = null;
   seatModalTitle.textContent = `${modalSeatIndices.length} Koltuk`;
@@ -1598,6 +1620,7 @@ function renderModalTierButtons(){
     btn.addEventListener('click', () => {
       modalTier = tier.id;
       buyerNameInput.value = '';
+      if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
       buyerNoteText.textContent = currentRole === 'guest'
         ? 'Biletin bu isimle düzenlenecek.'
         : 'Opsiyonel — boş bırakılabilir.';
@@ -1611,9 +1634,11 @@ function renderModalTierButtons(){
 async function openSeatModal(idx){
   modalSeatIdx = idx;
   modalSeatIndices = null;
+  modalBlockSeatPos = null;
   modalGender = null;
   modalTier = null;
   modalBuyerName = '';
+  modalBuyerEmail = '';
   modalDiscount = null;
   modalHeldIdx = null;
 
@@ -1709,62 +1734,205 @@ function closeSeatModal(){
   }
   modalSeatIdx = null;
   modalSeatIndices = null;
+  modalBlockSeatPos = null;
   modalGender = null;
   modalTier = null;
   modalBuyerName = '';
+  modalBuyerEmail = '';
   modalDiscount = null;
   modalHeldIdx = null;
-  stadiumTier = null;
-  stadiumRemainingCapacity = 0;
-  stadiumQuantity = 1;
-  stadiumBlockCapacityInfoEl.hidden = true;
 }
 
-// Kapasiteli futbol blokları: reserve_seat/hold TUTULMUYOR — bir blok
-// N kişilik olduğu için tek alıcıyı beklerken bütün bloğu kilitlemek diğer
-// alıcıları anlamsız yere bekletirdi. Kapasite kontrolü purchase_stadium_block
-// RPC'sinde atomik olarak (satın alma anında) yapılıyor, bkz. supabase-setup.sql.
-function openStadiumBlockModal(idx){
-  modalSeatIdx = idx;
+// ===== Futbol bloğu içinde tek tek koltuk seçimi (sinema düzeni gibi) =====
+// Bir bloğa (ör. "Classic VIP 2") tıklayınca artık sadece bir adet
+// seçilmiyor — o bloğun İÇİNE girilip capacity kadar numaralı koltuk
+// gösteriliyor, her biri normal sinema koltuğu gibi tek tek (cinsiyet +
+// alıcı + ödeme) satın alınıyor. seatStates[blockIdx]/seatSales[blockIdx]
+// artık kendi başına bir dizi (bkz. blockSoldCount/purchase_stadium_seat).
+let activeBlockIdx = null;
+let modalBlockSeatPos = null; // block içi hangi koltuk pozisyonu satın alınıyor
+
+function blockSeatStates(blockIdx){
+  const capacity = STADIUM_BLOCKS[blockIdx].capacity;
+  let arr = seatStates[blockIdx];
+  if(!Array.isArray(arr)) arr = [];
+  // Kapasiteye kadar pad et — göç edilmiş veri sadece o ana kadar satılmış
+  // koltukları içerir (bkz. supabase-setup.sql migrasyon notu), kalanı boş.
+  if(arr.length < capacity) arr = [...arr, ...new Array(capacity - arr.length).fill('e')];
+  seatStates[blockIdx] = arr;
+  return arr;
+}
+function blockSaleStates(blockIdx){
+  const capacity = STADIUM_BLOCKS[blockIdx].capacity;
+  let arr = seatSales[blockIdx];
+  if(!Array.isArray(arr)) arr = [];
+  if(arr.length < capacity) arr = [...arr, ...new Array(capacity - arr.length).fill(null)];
+  seatSales[blockIdx] = arr;
+  return arr;
+}
+
+function enterBlockView(blockIdx){
+  activeBlockIdx = blockIdx;
+  blockSeatStates(blockIdx);
+  blockSaleStates(blockIdx);
+  renderGrid();
+}
+function exitBlockView(){
+  activeBlockIdx = null;
+  renderGrid();
+}
+
+function renderBlockSeatGrid(){
+  const block = STADIUM_BLOCKS[activeBlockIdx];
+  const states = blockSeatStates(activeBlockIdx);
+
+  seatGrid.classList.remove('general-mode', 'stadium-mode');
+  seatGrid.classList.add('block-seat-mode');
+  seatGrid.style.gridTemplateColumns = `repeat(${Math.max(1, Math.ceil(Math.sqrt(block.capacity)))}, auto)`;
+  seatGrid.style.gridTemplateRows = '';
+  seatGrid.classList.toggle('guest-mode', !canEdit());
+  if(stadiumLegendEl) stadiumLegendEl.hidden = true;
+  seatGrid.innerHTML = '';
+  seatButtons = [];
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'btn btn-ghost block-back-btn';
+  backBtn.textContent = `← ${block.label} — Bloklara Dön`;
+  backBtn.addEventListener('click', exitBlockView);
+  seatGrid.appendChild(backBtn);
+
+  states.forEach((state, pos) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    renderBlockSeatVisual(btn, pos);
+    btn.addEventListener('click', () => handleBlockSeatClick(pos, btn));
+    seatGrid.appendChild(btn);
+    seatButtons.push(btn);
+  });
+
+  updateStats();
+  applyFilterAndSearch();
+}
+
+function renderBlockSeatVisual(btn, pos){
+  const state = blockSeatStates(activeBlockIdx)[pos] || 'e';
+  const sale = blockSaleStates(activeBlockIdx)[pos];
+  btn.className = ['seat', state, sale ? 'sold' : null].filter(Boolean).join(' ');
+  btn.innerHTML = '';
+  const num = document.createElement('span');
+  num.className = 'seat-num';
+  num.textContent = pos + 1;
+  btn.appendChild(num);
+  btn.setAttribute('aria-label', `${STADIUM_BLOCKS[activeBlockIdx].label} - Koltuk ${pos + 1}, durum: ${labelFor(state)}`);
+}
+
+function handleBlockSeatClick(pos, btn){
+  if(!canPurchase()) return;
+  openBlockSeatModal(pos);
+}
+
+async function openBlockSeatModal(pos){
+  modalSeatIdx = null;
   modalSeatIndices = null;
+  modalBlockSeatPos = pos;
   modalGender = null;
-  modalTier = null;
+  modalTier = STADIUM_BLOCKS[activeBlockIdx].tier; // tür blok tarafından sabit
   modalBuyerName = '';
+  modalBuyerEmail = '';
   modalDiscount = null;
   modalHeldIdx = null;
 
-  const block = STADIUM_BLOCKS[idx];
-  const sold = blockSoldCount(idx);
-  stadiumRemainingCapacity = Math.max(0, block.capacity - sold);
-  stadiumTier = block.tier;
-  modalTier = block.tier; // tür blok tarafından sabit — bilet türü paneli atlanıyor
+  const block = STADIUM_BLOCKS[activeBlockIdx];
+  const state = blockSeatStates(activeBlockIdx)[pos] || 'e';
+  const sale = blockSaleStates(activeBlockIdx)[pos];
 
-  seatModalTitle.textContent = `${block.label} Bloğu` + (ACCESSIBLE_SEATS.has(idx) ? ' ♿' : '');
+  seatModalTitle.textContent = `${block.label} — Koltuk ${pos + 1}`;
 
-  if(stadiumRemainingCapacity <= 0){
-    modalInfoTextEl.textContent = `Bu blok dolu (${sold}/${block.capacity}).`;
-    viewTicketBtn.hidden = true;
-    viewTicketBtn.onclick = null;
-    modalClearSeatBtn.hidden = true; // tek bileti değil tüm bloğu boşaltmak anlamsız/tehlikeli — bkz. cancel_stadium_ticket
+  if(isSeatTaken(state) || sale){
+    const parts = [`Cinsiyet: ${labelFor(state)}`];
+    if(sale && canEdit()) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
+    modalInfoTextEl.textContent = parts.join(' · ');
+    if(sale && sale.ticketCode && canEdit()){
+      viewTicketBtn.hidden = false;
+      viewTicketBtn.onclick = () => showTicketView(activeBlockIdx, sale, null, pos);
+    } else {
+      viewTicketBtn.hidden = true;
+      viewTicketBtn.onclick = null;
+    }
+    modalClearSeatBtn.hidden = !canEdit();
     holdCountdownEl.hidden = true;
-    stadiumBlockCapacityInfoEl.hidden = true; // "Bu blok dolu" bilgisi zaten modalInfoTextEl'de
     showModalPanel('info');
     seatModalOverlay.hidden = false;
     return;
   }
 
-  // Bloğa tıklar tıklamaz (cinsiyet adımından önce) kalan yer sayısı görünsün
-  // istendi — sadece "Adet Seç" adımına geçince değil.
-  stadiumBlockCapacityInfoEl.textContent = `${sold}/${block.capacity} satıldı — ${stadiumRemainingCapacity} yer kaldı.`;
-  stadiumBlockCapacityInfoEl.hidden = false;
-
   discountCodeInput.value = '';
   discountNoteText.hidden = true;
-  // Cinsiyet, kapasiteli bir bloktaki tekil biletlerde hiç kaydedilmiyor
-  // (bkz. buildStadiumSaleRecords/buildSaleRecord) — bu adım anlamsızdı,
-  // doğrudan adet seçimine geçiliyor.
-  openStadiumQuantityPanel();
+  showModalPanel('gender');
   seatModalOverlay.hidden = false;
+}
+
+// Bloğun tamamı bir kapasite havuzu olduğu için reserve_seat/hold burada
+// tutulmuyor — misafirin/personelin gerçekten bu koltuğu alıp almadığı
+// purchase_stadium_seat RPC'sindeki atomik "hâlâ boş mu" kontrolüyle karar veriliyor.
+async function finalizeBlockSeatPurchase(payment){
+  const pos = modalBlockSeatPos;
+  if(pos === null || activeBlockIdx === null) return;
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier) return;
+  const sale = buildSaleRecord(tier, payment);
+  const blockIdx = activeBlockIdx;
+
+  if(currentRole !== 'guest'){
+    blockSeatStates(blockIdx)[pos] = modalGender;
+    blockSaleStates(blockIdx)[pos] = sale;
+    if(seatButtons[pos]) renderBlockSeatVisual(seatButtons[pos], pos);
+    updateStats();
+    pushSeatStates();
+    pushSalesData();
+    closeSeatModal();
+    toast('Koltuk kaydedildi.');
+    showTicketView(blockIdx, sale, null, pos);
+    return;
+  }
+
+  if(!currentEventId) return;
+  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
+    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient.rpc('purchase_stadium_seat', {
+      p_event_id: currentEventId,
+      p_block_idx: blockIdx,
+      p_seat_pos: pos,
+      p_gender: SEAT_STATE_SHORT[modalGender] || modalGender,
+      p_sale: sale,
+      p_token: holdToken,
+    });
+    if(error) throw error;
+
+    blockSeatStates(blockIdx)[pos] = modalGender;
+    blockSaleStates(blockIdx)[pos] = sale;
+    if(seatButtons[pos]) renderBlockSeatVisual(seatButtons[pos], pos);
+    updateStats();
+
+    saveMyTicketLocally(currentEventNameBadge.textContent || '', `${STADIUM_BLOCKS[blockIdx].label} — Koltuk ${pos + 1}`, sale.ticketCode);
+    closeSeatModal();
+    showTicketView(blockIdx, sale, null, pos);
+  } catch(err){
+    console.warn('Koltuk satın alınamadı.', err);
+    const msg = (err && err.message) || '';
+    toast(msg.includes('SEAT_UNAVAILABLE')
+      ? 'Üzgünüz, bu koltuk az önce başkası tarafından alındı.'
+      : msg.includes('SEAT_HELD')
+        ? 'Bu koltuk şu anda başka biri tarafından işleniyor, birazdan tekrar dene.'
+        : 'Satın alma başarısız — buluta bağlanılamadı.');
+    closeSeatModal();
+  }
 }
 
 // Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — fiyat/bilet türü,
@@ -1810,37 +1978,6 @@ async function joinGeneralEvent(){
   }
 }
 
-function updateStadiumQuantityPrice(){
-  const tier = TICKET_TIERS.find(t => t.id === stadiumTier);
-  const qty = Math.max(1, Math.min(stadiumRemainingCapacity, Math.round(Number(stadiumQuantityInput.value)) || 1));
-  stadiumQuantityInput.value = qty;
-  stadiumQuantity = qty;
-  if(!tier){ stadiumQuantityPriceEl.textContent = ''; return; }
-  const unit = effectiveTierPrice(tier);
-  stadiumQuantityPriceEl.textContent = `${tier.label}: ${unit}₺ × ${qty} = ${unit * qty}₺`;
-}
-
-function openStadiumQuantityPanel(){
-  const tier = TICKET_TIERS.find(t => t.id === stadiumTier);
-  stadiumQuantityInput.max = stadiumRemainingCapacity;
-  stadiumQuantityInput.value = 1;
-  stadiumQuantityInfoEl.textContent = `${stadiumRemainingCapacity} yer kaldı${tier ? ` — ${tier.label}` : ''}.`;
-  updateStadiumQuantityPrice();
-  showModalPanel('quantity');
-}
-
-stadiumQuantityInput.addEventListener('input', updateStadiumQuantityPrice);
-
-stadiumQuantityContinueBtn.addEventListener('click', () => {
-  updateStadiumQuantityPrice();
-  buyerNameInput.value = '';
-  buyerNoteText.textContent = currentRole === 'guest'
-    ? 'Biletlerin bu isimle düzenlenecek.'
-    : 'Opsiyonel — boş bırakılabilir.';
-  showModalPanel('buyer');
-  buyerNameInput.focus();
-});
-
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
   btn.addEventListener('click', () => {
     modalGender = btn.dataset.gender;
@@ -1850,8 +1987,19 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
     if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
     else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
 
-    if(isStadiumMode()) openStadiumQuantityPanel();
-    else showModalPanel('tier');
+    if(modalBlockSeatPos !== null){
+      // Tür blok tarafından zaten sabit (bkz. openBlockSeatModal) — bilet
+      // türü paneli atlanıp doğrudan alıcı bilgisine geçiliyor.
+      buyerNameInput.value = '';
+      if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
+      buyerNoteText.textContent = currentRole === 'guest'
+        ? 'Biletin bu isimle düzenlenecek.'
+        : 'Opsiyonel — boş bırakılabilir.';
+      showModalPanel('buyer');
+      buyerNameInput.focus();
+    } else {
+      showModalPanel('tier');
+    }
   });
 });
 
@@ -1868,6 +2016,7 @@ buyerContinueBtn.addEventListener('click', () => {
     return;
   }
   modalBuyerName = name;
+  modalBuyerEmail = (buyerEmailInput?.value || '').trim();
   const isGuest = currentRole === 'guest';
   paymentDisclaimerEl.hidden = !isGuest;
   legalConsentRow.hidden = !isGuest;
@@ -1930,10 +2079,8 @@ function updatePriceSummary(){
   const finalPrice = computeDiscountedPrice(surged, modalDiscount); // sonra indirim
   const surgeApplied = surged !== tier.price;
 
-  // Kapasiteli futbol bloğunda tek fiyat değil, adet × birim fiyat toplamı gösteriliyor.
-  const qty = isStadiumMode() ? (stadiumQuantity || 1) : 1;
-  const prefix = qty > 1 ? `${tier.label} × ${qty}: ` : `${tier.label}: `;
-  const suffix = qty > 1 ? ` × ${qty} = ${finalPrice * qty}₺` : '';
+  const prefix = `${tier.label}: `;
+  const suffix = '';
 
   let text = prefix;
   if(surgeApplied && modalDiscount){
@@ -1950,8 +2097,8 @@ function updatePriceSummary(){
 
 document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if(isStadiumMode()){
-      finalizeStadiumPurchase(btn.dataset.payment);
+    if(modalBlockSeatPos !== null){
+      finalizeBlockSeatPurchase(btn.dataset.payment);
     } else if(currentRole === 'guest'){
       (modalSeatIndices && modalSeatIndices.length > 1)
         ? finalizeGuestBulkPurchase(btn.dataset.payment)
@@ -1986,83 +2133,8 @@ function buildSaleRecord(tier, payment){
   if(modalDiscount) sale.discountCode = modalDiscount.code;
   if(surged !== tier.price) sale.surged = true;
   if(modalBuyerName) sale.buyerName = modalBuyerName;
+  if(modalBuyerEmail) sale.buyerEmail = modalBuyerEmail;
   return sale;
-}
-
-function buildStadiumSaleRecords(tier, payment, qty){
-  const records = [];
-  for(let i = 0; i < qty; i++) records.push(buildSaleRecord(tier, payment));
-  return records;
-}
-
-// Kapasiteli futbol bloğu satın alma: personel mevcut tüm-diziyi-yeniden-yazan
-// push mekanizmasını kullanır (finalizeSeatSale ile aynı güven modeli);
-// misafir ise atomik purchase_stadium_block RPC'sini çağırır — bu RPC hem
-// kapasiteyi aşmadığını hem de bir aktif hold varsa onu kontrol eder (bkz.
-// supabase-setup.sql). Rezervasyon holdToken burada hiç alınmadı (handleSeatClick
-// notuna bkz.), bu yüzden p_token sadece "bu blokta benim adıma bir hold var mı"
-// kontrolü için geçiliyor (normalde olmayacak, ileride eklenirse diye).
-async function finalizeStadiumPurchase(payment){
-  const idx = modalSeatIdx;
-  if(idx === null) return;
-
-  const tier = TICKET_TIERS.find(t => t.id === modalTier);
-  if(!tier) return;
-
-  const qty = stadiumQuantity || 1;
-  const block = STADIUM_BLOCKS[idx];
-  const records = buildStadiumSaleRecords(tier, payment, qty);
-
-  if(currentRole !== 'guest'){
-    seatStates[idx] = blockSoldCount(idx) + qty;
-    seatSales[idx] = [...salesAt(idx), ...records];
-    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
-
-    updateStats();
-    pushSeatStates();
-    pushSalesData();
-    closeSeatModal();
-    toast(`${qty} bilet kaydedildi.`);
-    showTicketView(idx, records[0]);
-    return;
-  }
-
-  if(!currentEventId) return;
-  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
-    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
-    return;
-  }
-
-  try {
-    const { error } = await supabaseClient.rpc('purchase_stadium_block', {
-      p_event_id: currentEventId,
-      p_idx: idx,
-      p_quantity: qty,
-      p_capacity: block.capacity,
-      p_sales: records,
-      p_token: holdToken,
-    });
-    if(error) throw error;
-
-    seatStates[idx] = blockSoldCount(idx) + qty;
-    seatSales[idx] = [...salesAt(idx), ...records];
-    if(seatButtons[idx]) renderSeatVisual(seatButtons[idx], idx);
-    updateStats();
-
-    records.forEach(r => saveMyTicketLocally(currentEventNameBadge.textContent || '', seatLabelFor(idx), r.ticketCode));
-    closeSeatModal();
-    toast(qty > 1 ? `${qty} bilet oluşturuldu — "Biletim Var" listenden görebilirsin.` : 'Bilet oluşturuldu.');
-    showTicketView(idx, records[0]);
-  } catch(err){
-    console.warn('Blok satın alınamadı.', err);
-    const msg = (err && err.message) || '';
-    toast(msg.includes('CAPACITY_EXCEEDED')
-      ? 'Üzgünüz, bu blokta yeterli yer kalmadı.'
-      : msg.includes('SEAT_HELD')
-        ? 'Bu blok şu anda başka biri tarafından işleniyor, birazdan tekrar dene.'
-        : 'Satın alma başarısız — buluta bağlanılamadı.');
-    closeSeatModal();
-  }
 }
 
 // Personel akışı (tekli veya toplu) — mevcut tüm-diziyi-yeniden-yazan push
@@ -2214,6 +2286,19 @@ async function finalizeGuestBulkPurchase(payment){
 }
 
 modalClearSeatBtn.addEventListener('click', () => {
+  if(modalBlockSeatPos !== null && activeBlockIdx !== null){
+    const pos = modalBlockSeatPos;
+    const blockIdx = activeBlockIdx;
+    blockSeatStates(blockIdx)[pos] = 'e';
+    blockSaleStates(blockIdx)[pos] = null;
+    if(seatButtons[pos]) renderBlockSeatVisual(seatButtons[pos], pos);
+    updateStats();
+    pushSeatStates();
+    pushSalesData();
+    closeSeatModal();
+    toast('Koltuk boşaltıldı.');
+    return;
+  }
   const idx = modalSeatIdx;
   if(idx === null) return;
   seatStates[idx] = 'empty';
@@ -2234,9 +2319,29 @@ seatModalOverlay.addEventListener('click', (e) => { if(e.target === seatModalOve
 // eventInfo verilirse (Biletlerim aramasından — farklı/aktif olmayan bir
 // etkinlik için) o bilgiler kullanılır; verilmezse şu an içinde bulunulan
 // etkinliğin global durumu (currentEventNameBadge, cols, venueType) kullanılır.
-function computeSeatLabelFor(idx, eventInfo){
-  if(!eventInfo) return seatLabelFor(idx);
-  if(eventInfo.venue_type === 'futbol') return `${STADIUM_BLOCKS[idx] ? STADIUM_BLOCKS[idx].label : idx} Bloğu`;
+function computeSeatLabelFor(idx, eventInfo, seatPos){
+  if(!eventInfo){
+    // seatPos verilmişse idx bir blok index'idir ve seatPos o blok içindeki
+    // koltuk pozisyonu (bkz. finalizeBlockSeatPurchase/openBlockSeatModal) —
+    // activeBlockIdx gibi ambient bir duruma güvenmiyoruz çünkü aynı
+    // seatLabelFor(idx) çağrısı verifyTicket() içinde farklı bir anlamda
+    // (idx = blok index'i, blok görünümünde olup olmamaktan bağımsız) kullanılıyor.
+    if(seatPos !== null && seatPos !== undefined){
+      const block = STADIUM_BLOCKS[idx];
+      return `${block ? block.label : idx} — Koltuk ${seatPos + 1}`;
+    }
+    return seatLabelFor(idx);
+  }
+  if(eventInfo.venue_type === 'futbol'){
+    const block = STADIUM_BLOCKS[idx];
+    const blockLabel = block ? block.label : idx;
+    // seatPos varsa (bkz. find_ticket_by_code/find_tickets_by_email'in
+    // seat_pos kolonu) blok içindeki tekil koltuğu gösterir; yoksa (eski
+    // havuz modeli) sadece blok adı gösterilir.
+    return (seatPos !== null && seatPos !== undefined)
+      ? `${blockLabel} — Koltuk ${seatPos + 1}`
+      : `${blockLabel} Bloğu`;
+  }
   // Genel Etkinlik'te bilet/QR hiç yok (bkz. joinGeneralEvent), bu yüzden
   // "Biletim Var" araması oraya hiçbir zaman bir kayıt bulamaz — ayrı bir
   // dal gerekmiyor.
@@ -2250,14 +2355,14 @@ function computeSeatLabelFor(idx, eventInfo){
 // tutuyoruz ki iptal RPC'si hangi etkinlik/koltuk olduğunu bilsin.
 let ticketCancelContext = null;
 
-function showTicketView(idx, sale, eventInfo){
+function showTicketView(idx, sale, eventInfo, seatPos){
   document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
   // eventInfo verilmişse (Biletim Var akışı) o etkinliğin kendi listesine
   // bak — ACCESSIBLE_SEATS o an ekranda açık olan BAŞKA bir etkinliğe ait
   // olabilir, index eşleşmesi yanlış koltuğu işaretli gösterebilirdi.
   const accessibleList = eventInfo ? (Array.isArray(eventInfo.accessible_seats) ? eventInfo.accessible_seats : []) : [...ACCESSIBLE_SEATS];
   const isAccessible = accessibleList.includes(idx);
-  document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo) + (isAccessible ? ' ♿' : '');
+  document.getElementById('ticketSeatLabel').textContent = computeSeatLabelFor(idx, eventInfo, seatPos) + (isAccessible ? ' ♿' : '');
   // Fiyat liste fiyatından farklıysa sebebini de yaz — zam mı, indirim mi,
   // ikisi birden mi. (Eskiden indirim kodu yokken bile "kod: null" yazıyordu.)
   const odeme = paymentLabel(sale.payment) || '-';
@@ -2327,22 +2432,26 @@ const ticketCancelBtn = document.getElementById('ticketCancelBtn');
 
 ticketCancelBtn.addEventListener('click', async () => {
   if(!ticketCancelContext || !supabaseClient) return;
-  const { eventId, idx, ticketCode, venueType: ticketVenueType } = ticketCancelContext;
+  const { eventId, idx, ticketCode, venueType: ticketVenueType, seatPos } = ticketCancelContext;
   if(!confirm('Bu bilet iptal edilecek ve koltuk tekrar satışa açılacak. Emin misin?')) return;
 
   ticketCancelBtn.disabled = true;
   try {
-    // Futbol bloklarında bir bilet iptali koltuğu boşaltmaz, sadece o bloğun
-    // satılan sayısını 1 azaltır ve o tekil bilet kaydını diziden çıkarır
-    // (bkz. cancel_stadium_ticket) — diğer venue türlerinde koltuğun tamamı
-    // tekrar boşa düşer (cancel_ticket).
-    const { error } = ticketVenueType === 'futbol'
-      ? await supabaseClient.rpc('cancel_stadium_ticket', {
-          p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+    // seatPos varsa futbol bloğu içinde tekil koltuk takibi yapılıyor demektir
+    // (bkz. purchase_stadium_seat) — o koltuk cancel_stadium_seat ile boşa
+    // düşürülür. seatPos yoksa eski havuz modeli (cancel_stadium_ticket, sadece
+    // sayaç azaltır) veya klasik tekil koltuk (cancel_ticket) devrede.
+    const { error } = (ticketVenueType === 'futbol' && seatPos !== null && seatPos !== undefined)
+      ? await supabaseClient.rpc('cancel_stadium_seat', {
+          p_event_id: eventId, p_block_idx: idx, p_seat_pos: seatPos, p_ticket_code: ticketCode,
         })
-      : await supabaseClient.rpc('cancel_ticket', {
-          p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
-        });
+      : ticketVenueType === 'futbol'
+        ? await supabaseClient.rpc('cancel_stadium_ticket', {
+            p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+          })
+        : await supabaseClient.rpc('cancel_ticket', {
+            p_event_id: eventId, p_idx: idx, p_ticket_code: ticketCode,
+          });
     if(error) throw error;
 
     forgetMyTicketLocally(ticketCode);
@@ -2589,8 +2698,8 @@ async function findMyTicket(){
       cols: found.event_cols, rows: found.event_rows, accessible_seats: found.event_accessible_seats,
     };
     closeMyTicketModal();
-    ticketCancelContext = { eventId: found.event_id, idx: found.seat_idx, ticketCode: code, venueType: ev.venue_type };
-    showTicketView(found.seat_idx, found.sale, ev);
+    ticketCancelContext = { eventId: found.event_id, idx: found.seat_idx, ticketCode: code, venueType: ev.venue_type, seatPos: found.seat_pos };
+    showTicketView(found.seat_idx, found.sale, ev, found.seat_pos);
   } catch(err){
     console.warn('Bilet aranamadı.', err);
     myTicketResultEl.className = 'checkin-result error';
@@ -2621,6 +2730,163 @@ myTicketOverlay.addEventListener('click', (e) => { if(e.target === myTicketOverl
 myTicketFindBtn.addEventListener('click', findMyTicket);
 myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); findMyTicket(); } });
 
+// ===== E-posta ile giriş (GERÇEK Supabase Auth OTP) + "Biletlerim" =====
+// Kod client'ta ÜRETİLMİYOR — signInWithOtp() Supabase'in kendi sunucusundan
+// gerçek bir e-posta gönderiyor, verifyOtp() o kodu sunucuda doğruluyor.
+// Sadece misafir sayfasında (index.html) var; emailLoginBtn diğer
+// sayfalarda null olduğu için hepsi ?. ile erişiliyor.
+let verifiedEmail = null;
+
+function updateEmailLoginBtnLabel(){
+  if(!emailLoginBtn) return;
+  emailLoginBtn.textContent = verifiedEmail ? 'Biletlerim' : 'Giriş Yap';
+}
+updateEmailLoginBtnLabel();
+
+// Sayfa açılışında zaten geçerli bir Supabase Auth oturumu varsa (önceki
+// ziyaretten kalma, tarayıcı kendi tutuyor) onu yükle — async olduğu için
+// buton etiketi bir anlığına "Giriş Yap" gösterip sonra "Biletlerim"e dönebilir.
+(async () => {
+  if(!supabaseClient) return;
+  try {
+    const { data } = await supabaseClient.auth.getSession();
+    if(data.session?.user?.email){
+      verifiedEmail = data.session.user.email;
+      updateEmailLoginBtnLabel();
+    }
+  } catch { /* yoksay */ }
+})();
+
+function showEmailPanel(name){
+  document.querySelectorAll('#emailLoginOverlay [data-email-panel]').forEach(p => {
+    p.hidden = p.dataset.emailPanel !== name;
+  });
+}
+
+function openEmailLoginModal(){
+  if(!emailLoginOverlay) return;
+  emailLoginErrorEl.hidden = true;
+  emailLoginOverlay.hidden = false;
+  if(verifiedEmail){
+    showEmailPanel('tickets');
+    loadMyEmailTickets();
+  } else {
+    emailLoginEmailInput.value = '';
+    showEmailPanel('email');
+    emailLoginEmailInput.focus();
+  }
+}
+function closeEmailLoginModal(){
+  if(emailLoginOverlay) emailLoginOverlay.hidden = true;
+}
+
+async function loadMyEmailTickets(){
+  myEmailTicketsNote.textContent = 'Yükleniyor...';
+  myEmailTicketsList.innerHTML = '';
+  if(!supabaseClient || !verifiedEmail) return;
+  try {
+    const { data, error } = await supabaseClient.rpc('find_tickets_by_email', { p_email: verifiedEmail });
+    if(error) throw error;
+
+    const tickets = data || [];
+    if(!tickets.length){
+      myEmailTicketsNote.textContent = 'Bu e-postayla alınmış bir bilet bulunamadı.';
+      return;
+    }
+    myEmailTicketsNote.textContent = `${tickets.length} bilet bulundu — birine tıklayarak görüntüleyebilirsin.`;
+    tickets.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'my-ticket-history-item';
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'hist-event';
+      nameEl.textContent = t.event_name;
+
+      const seatEl = document.createElement('span');
+      seatEl.className = 'hist-seat';
+      seatEl.textContent = t.sale.ticketCode;
+
+      row.appendChild(nameEl);
+      row.appendChild(seatEl);
+      row.addEventListener('click', () => {
+        closeEmailLoginModal();
+        const ev = {
+          name: t.event_name, venue_type: t.event_venue_type,
+          cols: t.event_cols, rows: t.event_rows, accessible_seats: t.event_accessible_seats,
+        };
+        ticketCancelContext = { eventId: t.event_id, idx: t.seat_idx, ticketCode: t.sale.ticketCode, venueType: ev.venue_type, seatPos: t.seat_pos };
+        showTicketView(t.seat_idx, t.sale, ev, t.seat_pos);
+      });
+      myEmailTicketsList.appendChild(row);
+    });
+  } catch(err){
+    console.warn('Biletler alınamadı.', err);
+    myEmailTicketsNote.textContent = 'Biletler alınamadı — buluta bağlanılamadı.';
+  }
+}
+
+emailLoginBtn?.addEventListener('click', openEmailLoginModal);
+emailLoginClose?.addEventListener('click', closeEmailLoginModal);
+emailLoginOverlay?.addEventListener('click', (e) => { if(e.target === emailLoginOverlay) closeEmailLoginModal(); });
+
+emailLoginSendBtn?.addEventListener('click', async () => {
+  const email = emailLoginEmailInput.value.trim();
+  if(!email || !email.includes('@')){
+    toast('Geçerli bir e-posta adresi gir.');
+    return;
+  }
+  if(!supabaseClient) return;
+  emailLoginSendBtn.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.signInWithOtp({ email });
+    if(error) throw error;
+    emailLoginCodeNote.textContent = `${email} adresine bir kod gönderdik — gelen kutunu (spam dahil) kontrol et.`;
+    emailLoginCodeInput.value = '';
+    emailLoginErrorEl.hidden = true;
+    showEmailPanel('code');
+    emailLoginCodeInput.focus();
+  } catch(err){
+    console.warn('Kod gönderilemedi.', err);
+    toast('Kod gönderilemedi — buluta bağlanılamadı.');
+  } finally {
+    emailLoginSendBtn.disabled = false;
+  }
+});
+emailLoginEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
+
+emailLoginVerifyBtn?.addEventListener('click', async () => {
+  const code = emailLoginCodeInput.value.trim();
+  const email = emailLoginEmailInput.value.trim();
+  if(!code || !supabaseClient) return;
+
+  emailLoginVerifyBtn.disabled = true;
+  try {
+    const { data, error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
+    if(error) throw error;
+
+    emailLoginErrorEl.hidden = true;
+    verifiedEmail = data.user?.email || email;
+    updateEmailLoginBtnLabel();
+    showEmailPanel('tickets');
+    loadMyEmailTickets();
+    toast('Giriş yapıldı.');
+  } catch(err){
+    console.warn('Kod doğrulanamadı.', err);
+    emailLoginErrorEl.hidden = false;
+  } finally {
+    emailLoginVerifyBtn.disabled = false;
+  }
+});
+emailLoginCodeInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginVerifyBtn.click(); } });
+
+emailLogoutBtn?.addEventListener('click', async () => {
+  if(supabaseClient) await supabaseClient.auth.signOut();
+  verifiedEmail = null;
+  updateEmailLoginBtnLabel();
+  closeEmailLoginModal();
+  toast('Çıkış yapıldı.');
+});
+
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!seatModalOverlay.hidden) closeSeatModal();
@@ -2628,6 +2894,7 @@ document.addEventListener('keydown', (e) => {
   if(!ticketViewOverlay.hidden) closeTicketView();
   if(!checkinOverlay.hidden) closeCheckinModal();
   if(!myTicketOverlay.hidden) closeMyTicketModal();
+  if(emailLoginOverlay && !emailLoginOverlay.hidden) closeEmailLoginModal();
 });
 
 // ===== Filters & Search functionality =====
@@ -2722,21 +2989,28 @@ const PAYMENT_SHORT = { kart: 'k', nakit: 'n' };
 const PAYMENT_LONG = { k: 'kart', n: 'nakit' };
 
 function encodeSeatStates(states){
-  return states.map(s => SEAT_STATE_SHORT[s] || s);
+  // Futbol bloklarında bir üst-eleman tekil durum değil, o bloktaki HER
+  // koltuğun kendi durumunu taşıyan bir DİZİ (bkz. blockSoldCount notu) —
+  // içine de recursive olarak aynı kısaltmayı uyguluyoruz.
+  return states.map(s => Array.isArray(s) ? s.map(x => SEAT_STATE_SHORT[x] || x) : (SEAT_STATE_SHORT[s] || s));
 }
 function decodeSeatStates(states){
-  return states.map(s => SEAT_STATE_LONG[s] || s);
+  return states.map(s => Array.isArray(s) ? s.map(x => SEAT_STATE_LONG[x] || x) : (SEAT_STATE_LONG[s] || s));
 }
 function isSeatTaken(state){
   return !!state && state !== 'empty' && state !== 'e';
 }
 
 // ===== Futbol Sahası kapasiteli blok yardımcıları =====
-// Diğer venue türlerinde seatStates[idx] bir DURUM ('e'/'m'/'f'), stadyumda
-// ise SATILAN BİLET SAYISI (tam sayı). Number() üzerinden okuyoruz ki eski/
-// göçmemiş bir kayıt ('e' gibi bir string) NaN->0 olarak güvenle çözülsün.
+// Genel Etkinlik'te seatStates[idx] SATILAN/KATILAN SAYISI (tam sayı,
+// Number() ile okunuyor). Futbol bloklarında ise artık her koltuk tek tek
+// takip ediliyor — seatStates[blockIdx] o bloktaki HER koltuğun kendi
+// durumunu ('e'/'m'/'f') taşıyan bir DİZİ (bkz. renderBlockSeatGrid);
+// "satılan sayısı" bu dizideki dolu koltukları saymakla bulunuyor.
 function blockSoldCount(idx){
-  const n = Number(seatStates[idx]);
+  const v = seatStates[idx];
+  if(Array.isArray(v)) return v.filter(isSeatTaken).length;
+  const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -2968,7 +3242,13 @@ function computeOccupancy(ev){
     const total = ev.venue_type === 'futbol'
       ? STADIUM_BLOCKS.reduce((sum, b) => sum + b.capacity, 0)
       : (Number(ev.general_capacity) > 0 ? Number(ev.general_capacity) : DEFAULT_GENERAL_CAPACITY);
+    // Futbol bloklarında s artık bir SAYI değil, o bloktaki her koltuğun
+    // kendi durumunu taşıyan bir DİZİ (bkz. purchase_stadium_seat) — bu
+    // yüzden Array.isArray kontrolüyle dolu koltukları sayıyoruz; Genel
+    // Etkinlik'te (ve henüz göçmemiş eski futbol verisinde) hâlâ düz bir
+    // sayı, Number() ile okunuyor.
     const filled = states.reduce((sum, s) => {
+      if(Array.isArray(s)) return sum + s.filter(isSeatTaken).length;
       const n = Number(s);
       return sum + (Number.isFinite(n) ? n : 0);
     }, 0);
