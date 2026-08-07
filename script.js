@@ -480,7 +480,14 @@ function renderVenueAccent(){
   stadiumNoteEl.textContent = stadium
     ? 'Futbol Sahası için sabit stadyum düzeni kullanılır — sütun/satır ayarı bu türde geçerli değil.'
     : 'Genel Etkinlik ücretsiz/biletsiz tek bir giriş havuzudur — koltuk numarası ve bilet türü/fiyat yoktur, sadece toplam kapasite.';
-  screenAccentEl.hidden = pooled;
+  // activeBlockIdx dolu olan bir "havuz" değil, blok İÇİNDE gerçek tek tek
+  // koltuk seçimi (bkz. renderGrid) — bu durumda SAHA etiketi ve Tekli/Çoklu
+  // Seçim yine anlamlı. Bu fonksiyon her realtime güncellemede de çalıştığı
+  // için (bkz. applyEventRow) burada `pooled` deyip geçmek, kullanıcı bir
+  // blok içinde çoklu koltuk seçerken başka biri BAŞKA bir koltuk aldığında
+  // setBulkMode(false) ile seçimini sıfırlardı.
+  const inBlock = stadium && activeBlockIdx !== null;
+  screenAccentEl.hidden = pooled && !inBlock;
 
   // Genel Etkinlik'te fiyat/bilet türü ve indirim kodu kavramı yok (bkz.
   // joinGeneralEvent) — o panelleri gizleyip yerine tek bir kapasite
@@ -497,9 +504,9 @@ function renderVenueAccent(){
   // Tekli/Çoklu Seçim, kapasiteli havuzlarda anlamsız (her havuz kendi
   // miktar seçimini kendi modalinde yapıyor) — ♿ İşaretle bloklar için de
   // geçerli kaldığından o ayrı kalıyor.
-  singleModeBtn.hidden = pooled;
-  bulkModeBtn.hidden = pooled;
-  if(pooled) setBulkMode(false);
+  singleModeBtn.hidden = pooled && !inBlock;
+  bulkModeBtn.hidden = pooled && !inBlock;
+  if(pooled && !inBlock) setBulkMode(false);
 
   // Filtre çipleri (Tümü/Boş/Erkek/Kadın/Satılan) havuzlu modda anlamsız —
   // her blok/havuzun üzerinde zaten kendi "X/Y" sayısı yazıyor, ayrıca bir
@@ -558,10 +565,19 @@ function generateGrid(preserve){
 
 function renderGrid(){
   if(isStadiumMode()){
-    if(activeBlockIdx !== null){
+    const inBlock = activeBlockIdx !== null;
+    // Blok icine girince artik gercek sinema-tarzi tek koltuk secimi var --
+    // "SAHA" yon etiketi (screenAccentEl, digerlerinde PERDE/SAHNE) ve
+    // Tekli/Coklu Seçim anlamli hale geliyor. Blok listesinde (havuz
+    // gorunumu) bunlarin hicbiri anlamsiz, renderVenueAccent'te oldugu gibi gizli kaliyor.
+    if(screenAccentEl) screenAccentEl.hidden = !inBlock;
+    singleModeBtn.hidden = !inBlock;
+    bulkModeBtn.hidden = !inBlock;
+    if(inBlock){
       renderBlockSeatGrid();
       return;
     }
+    setBulkMode(false);
     renderStadiumGrid();
     return;
   }
@@ -838,6 +854,17 @@ startBulkSaleBtn.addEventListener('click', () => {
   modalSeatIdx = null;
   modalBlockSeatPos = null;
   modalGender = null;
+
+  // Blok içindeki çoklu seçim: tür zaten blok tarafından sabit (bkz.
+  // openBlockSeatModal) — tür paneli atlanıp doğrudan cinsiyete geçiliyor.
+  if(activeBlockIdx !== null){
+    modalTier = STADIUM_BLOCKS[activeBlockIdx].tier;
+    seatModalTitle.textContent = `${STADIUM_BLOCKS[activeBlockIdx].label} — ${modalSeatIndices.length} Koltuk`;
+    showModalPanel('gender');
+    seatModalOverlay.hidden = false;
+    return;
+  }
+
   modalTier = null;
   seatModalTitle.textContent = `${modalSeatIndices.length} Koltuk`;
   renderModalTierButtons();
@@ -1775,10 +1802,14 @@ function enterBlockView(blockIdx){
   activeBlockIdx = blockIdx;
   blockSeatStates(blockIdx);
   blockSaleStates(blockIdx);
+  bulkSelected.clear();
+  updateBulkToolbar();
   renderGrid();
 }
 function exitBlockView(){
   activeBlockIdx = null;
+  bulkSelected.clear();
+  updateBulkToolbar();
   renderGrid();
 }
 
@@ -1806,6 +1837,7 @@ function renderBlockSeatGrid(){
     const btn = document.createElement('button');
     btn.type = 'button';
     renderBlockSeatVisual(btn, pos);
+    if(bulkMode && bulkSelected.has(pos)) btn.classList.add('bulk-selected');
     btn.addEventListener('click', () => handleBlockSeatClick(pos, btn));
     seatGrid.appendChild(btn);
     seatButtons.push(btn);
@@ -1829,6 +1861,27 @@ function renderBlockSeatVisual(btn, pos){
 
 function handleBlockSeatClick(pos, btn){
   if(!canPurchase()) return;
+
+  // Klasik ızgaradaki bulkMode dalıyla aynı mantık (bkz. handleSeatClick) --
+  // blok içinde de artık gerçek koltuk pozisyonları var, o yüzden grup/aile
+  // bileti için toplu seçim burada da anlamlı.
+  if(bulkMode){
+    const state = blockSeatStates(activeBlockIdx)[pos] || 'e';
+    if(isSeatTaken(state)){
+      toast('Bu koltuk dolu — toplu seçim için boş koltuk seç.');
+      return;
+    }
+    if(bulkSelected.has(pos)){
+      bulkSelected.delete(pos);
+      btn.classList.remove('bulk-selected');
+    } else {
+      bulkSelected.add(pos);
+      btn.classList.add('bulk-selected');
+    }
+    updateBulkToolbar();
+    return;
+  }
+
   openBlockSeatModal(pos);
 }
 
@@ -1935,6 +1988,86 @@ async function finalizeBlockSeatPurchase(payment){
   }
 }
 
+// Blok içinde ÇOKLU koltuk seçimiyle satın alma — grup/aile bileti için
+// (finalizeGuestBulkPurchase'in blok-içi karşılığı). Tür zaten blok
+// tarafından sabit. Misafir akışında her koltuk kendi purchase_stadium_seat
+// çağrısıyla ayrı ayrı, atomik olarak alınır — biri araya girip başkası
+// tarafından alınmışsa sadece o koltuk başarısız olur, diğerleri etkilenmez.
+async function finalizeBlockBulkPurchase(payment){
+  const positions = modalSeatIndices ? [...modalSeatIndices] : [];
+  if(!positions.length || activeBlockIdx === null) return;
+
+  const tier = TICKET_TIERS.find(t => t.id === modalTier);
+  if(!tier) return;
+  const blockIdx = activeBlockIdx;
+
+  if(currentRole !== 'guest'){
+    positions.forEach(pos => {
+      const sale = buildSaleRecord(tier, payment);
+      blockSeatStates(blockIdx)[pos] = modalGender;
+      blockSaleStates(blockIdx)[pos] = sale;
+      if(seatButtons[pos]) renderBlockSeatVisual(seatButtons[pos], pos);
+    });
+    updateStats();
+    pushSeatStates();
+    pushSalesData();
+    bulkSelected.clear();
+    updateBulkToolbar();
+    setBulkMode(false);
+    closeSeatModal();
+    toast(`${positions.length} koltuk kaydedildi.`);
+    return;
+  }
+
+  if(!currentEventId) return;
+  if(!legalConsentRow.hidden && !legalConsentCheckbox.checked){
+    toast('Devam etmek için sözleşmeyi onaylaman gerekiyor.');
+    return;
+  }
+
+  const basarili = [];
+  let basarisizSayisi = 0;
+
+  for(const pos of positions){
+    const sale = buildSaleRecord(tier, payment);
+    try {
+      const { error } = await supabaseClient.rpc('purchase_stadium_seat', {
+        p_event_id: currentEventId,
+        p_block_idx: blockIdx,
+        p_seat_pos: pos,
+        p_gender: SEAT_STATE_SHORT[modalGender] || modalGender,
+        p_sale: sale,
+        p_token: holdToken,
+      });
+      if(error) throw error;
+
+      blockSeatStates(blockIdx)[pos] = modalGender;
+      blockSaleStates(blockIdx)[pos] = sale;
+      if(seatButtons[pos]) renderBlockSeatVisual(seatButtons[pos], pos);
+      saveMyTicketLocally(currentEventNameBadge.textContent || '', `${STADIUM_BLOCKS[blockIdx].label} — Koltuk ${pos + 1}`, sale.ticketCode);
+      basarili.push({ pos, sale });
+    } catch(err){
+      console.warn(`Koltuk ${pos} satın alınamadı.`, err);
+      basarisizSayisi++;
+    }
+  }
+
+  updateStats();
+  bulkSelected.clear();
+  updateBulkToolbar();
+  setBulkMode(false);
+  closeSeatModal();
+
+  if(!basarili.length){
+    toast('Üzgünüz, seçtiğin koltukların hepsi az önce başkası tarafından alındı.');
+    return;
+  }
+  toast(basarisizSayisi
+    ? `${basarili.length} bilet oluşturuldu, ${basarisizSayisi} koltuk az önce başkası tarafından alındı.`
+    : `${basarili.length} bilet oluşturuldu — "Biletim Var" listenden görebilirsin.`);
+  showTicketView(blockIdx, basarili[0].sale, null, basarili[0].pos);
+}
+
 // Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — fiyat/bilet türü,
 // alıcı bilgisi, ödeme yöntemi, QR/bilet kodu YOK. Tek tıkla katılım,
 // kapasite kontrolü purchase_stadium_block RPC'sinde atomik yapılıyor
@@ -1987,9 +2120,10 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
     if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
     else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
 
-    if(modalBlockSeatPos !== null){
-      // Tür blok tarafından zaten sabit (bkz. openBlockSeatModal) — bilet
-      // türü paneli atlanıp doğrudan alıcı bilgisine geçiliyor.
+    if(modalBlockSeatPos !== null || (activeBlockIdx !== null && modalSeatIndices && modalSeatIndices.length)){
+      // Tür blok tarafından zaten sabit (bkz. openBlockSeatModal/
+      // startBulkSaleBtn) — tekli ya da çoklu blok koltuğunda bilet türü
+      // paneli atlanıp doğrudan alıcı bilgisine geçiliyor.
       buyerNameInput.value = '';
       if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
       buyerNoteText.textContent = currentRole === 'guest'
@@ -2099,6 +2233,8 @@ document.querySelectorAll('.modal-step-panel[data-panel="payment"] [data-payment
   btn.addEventListener('click', () => {
     if(modalBlockSeatPos !== null){
       finalizeBlockSeatPurchase(btn.dataset.payment);
+    } else if(activeBlockIdx !== null && modalSeatIndices && modalSeatIndices.length){
+      finalizeBlockBulkPurchase(btn.dataset.payment);
     } else if(currentRole === 'guest'){
       (modalSeatIndices && modalSeatIndices.length > 1)
         ? finalizeGuestBulkPurchase(btn.dataset.payment)

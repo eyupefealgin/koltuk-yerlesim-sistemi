@@ -837,23 +837,55 @@ begin
     raise exception 'SEAT_HELD';
   end if;
 
-  -- Atomik "hala bos mu" kontrolu: WHERE kosulu UPDATE ile ayni satirda
-  -- degerlendirildigi icin iki alici ayni koltuga ayni anda tiklarsa
-  -- sadece biri kazanir.
+  -- Migrasyon/ilk yukleme sadece o ana kadar SATILMIS kadar eleman birakiyor
+  -- (bkz. yukaridaki FUTBOL BLOKLARI migrasyonu) -- client kapasiteye kadar
+  -- pad'i sadece kendi ekraninda yapiyor (bkz. blockSeatStates), veritabanina
+  -- geri yazmiyor. Bu yuzden dizi veritabaninda p_seat_pos'tan kisa olabilir;
+  -- duz jsonb_set boyle "araya" bir index'e yazamaz (sessizce hicbir sey
+  -- yapmaz), o zaman WHERE kosulu hep NULL/UNAVAILABLE donerdi. Once diziyi
+  -- p_seat_pos'a kadar (veya zaten daha uzunsa mevcut uzunluguna) 'e' ile
+  -- dolduruyoruz, SONRA hedef pozisyonu yaziyoruz -- hepsi ayni atomik UPDATE
+  -- icinde, WHERE kosulu hala eski (pad'lenmemis) degere gore kontrol ediyor.
   update events
   set seat_states = jsonb_set(
-        seat_states, array[p_block_idx::text, p_seat_pos::text], to_jsonb(p_gender)
+        seat_states,
+        array[p_block_idx::text],
+        (
+          select jsonb_agg(
+            case
+              when i = p_seat_pos then to_jsonb(p_gender)
+              else coalesce(seat_states -> p_block_idx -> i, '"e"'::jsonb)
+            end
+            order by i
+          )
+          from generate_series(0, greatest(p_seat_pos, coalesce(jsonb_array_length(seat_states -> p_block_idx), 0) - 1)) as i
+        )
       ),
       updated_at = now()
   where id = p_event_id
-    and (seat_states -> p_block_idx -> p_seat_pos) #>> '{}' in ('e', 'empty');
+    and coalesce((seat_states -> p_block_idx -> p_seat_pos) #>> '{}', 'e') in ('e', 'empty');
 
   if not found then
     raise exception 'SEAT_UNAVAILABLE';
   end if;
 
+  -- Ayni pad sorunu event_sales.seat_sales icin de gecerli -- ayni yontemle
+  -- cozuluyor (bos pozisyonlar null ile doldurulur, bkz. client blockSaleStates).
   update event_sales
-  set seat_sales = jsonb_set(seat_sales, array[p_block_idx::text, p_seat_pos::text], p_sale),
+  set seat_sales = jsonb_set(
+        seat_sales,
+        array[p_block_idx::text],
+        (
+          select jsonb_agg(
+            case
+              when i = p_seat_pos then p_sale
+              else coalesce(seat_sales -> p_block_idx -> i, 'null'::jsonb)
+            end
+            order by i
+          )
+          from generate_series(0, greatest(p_seat_pos, coalesce(jsonb_array_length(seat_sales -> p_block_idx), 0) - 1)) as i
+        )
+      ),
       updated_at = now()
   where event_id = p_event_id;
 end;
