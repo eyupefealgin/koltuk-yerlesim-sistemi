@@ -855,12 +855,13 @@ startBulkSaleBtn.addEventListener('click', () => {
   modalBlockSeatPos = null;
   modalGender = null;
 
-  // Blok içindeki çoklu seçim: tür zaten blok tarafından sabit (bkz.
-  // openBlockSeatModal) — tür paneli atlanıp doğrudan cinsiyete geçiliyor.
+  // Blok içindeki çoklu seçim: tür zaten blok tarafından sabit, cinsiyet
+  // ayrımı da yok (bkz. openBuyerPanelForBlockSeat) — tür VE cinsiyet
+  // panelleri atlanıp doğrudan alıcı bilgisine geçiliyor.
   if(activeBlockIdx !== null){
     modalTier = STADIUM_BLOCKS[activeBlockIdx].tier;
     seatModalTitle.textContent = `${STADIUM_BLOCKS[activeBlockIdx].label} — ${modalSeatIndices.length} Koltuk`;
-    showModalPanel('gender');
+    openBuyerPanelForBlockSeat();
     seatModalOverlay.hidden = false;
     return;
   }
@@ -1856,7 +1857,10 @@ function renderBlockSeatVisual(btn, pos){
   num.className = 'seat-num';
   num.textContent = pos + 1;
   btn.appendChild(num);
-  btn.setAttribute('aria-label', `${STADIUM_BLOCKS[activeBlockIdx].label} - Koltuk ${pos + 1}, durum: ${labelFor(state)}`);
+  // labelFor(state) "Erkek/Kadın/Boş" döner ama futbol bloklarında cinsiyet
+  // ayrımı yok (bkz. openBuyerPanelForBlockSeat) -- isSeatTaken ile dolu/boş
+  // olarak anons ediliyor.
+  btn.setAttribute('aria-label', `${STADIUM_BLOCKS[activeBlockIdx].label} - Koltuk ${pos + 1}, durum: ${isSeatTaken(state) ? 'Dolu' : 'Boş'}`);
 }
 
 function handleBlockSeatClick(pos, btn){
@@ -1903,9 +1907,12 @@ async function openBlockSeatModal(pos){
   seatModalTitle.textContent = `${block.label} — Koltuk ${pos + 1}`;
 
   if(isSeatTaken(state) || sale){
-    const parts = [`Cinsiyet: ${labelFor(state)}`];
+    // Futbol bloklarında koltuklar artık cinsiyete göre değil, sadece dolu/boş
+    // olarak takip ediliyor (bkz. openBuyerPanelForBlockSeat) — burada
+    // "Cinsiyet: ..." satırı gösterilmiyor.
+    const parts = [];
     if(sale && canEdit()) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
-    modalInfoTextEl.textContent = parts.join(' · ');
+    modalInfoTextEl.textContent = parts.length ? parts.join(' · ') : 'Bu koltuk satılmış.';
     if(sale && sale.ticketCode && canEdit()){
       viewTicketBtn.hidden = false;
       viewTicketBtn.onclick = () => showTicketView(activeBlockIdx, sale, null, pos);
@@ -1922,8 +1929,26 @@ async function openBlockSeatModal(pos){
 
   discountCodeInput.value = '';
   discountNoteText.hidden = true;
-  showModalPanel('gender');
+  openBuyerPanelForBlockSeat();
   seatModalOverlay.hidden = false;
+}
+
+// Futbol bloklarında koltuklar cinsiyete göre ayrılmıyor (sinema/tiyatrodan
+// farklı olarak stadyum tribününde bu ayrım anlamsız) -- bu yüzden hem tekli
+// hem çoklu blok koltuğu seçiminde cinsiyet paneli hiç gösterilmiyor,
+// doğrudan alıcı bilgisine geçiliyor. modalGender'a hâlâ sabit bir değer
+// yazılıyor çünkü seat_states/purchase_stadium_seat atomik "hâlâ boş mu"
+// kontrolü için hâlâ 'e'/'empty' DIŞINDA bir değere ihtiyaç duyuyor — bu
+// sadece dahili bir "dolu" işareti, kullanıcıya hiçbir yerde gösterilmiyor.
+function openBuyerPanelForBlockSeat(){
+  modalGender = 'male';
+  buyerNameInput.value = '';
+  if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
+  buyerNoteText.textContent = currentRole === 'guest'
+    ? 'Biletin bu isimle düzenlenecek.'
+    : 'Opsiyonel — boş bırakılabilir.';
+  showModalPanel('buyer');
+  buyerNameInput.focus();
 }
 
 // Bloğun tamamı bir kapasite havuzu olduğu için reserve_seat/hold burada
@@ -2113,6 +2138,9 @@ async function joinGeneralEvent(){
 
 document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
   btn.addEventListener('click', () => {
+    // Bu panel artık sadece klasik/Genel Etkinlik akışında görünüyor -- futbol
+    // blok koltuklarında cinsiyet ayrımı yok, gösterilmiyor (bkz.
+    // openBuyerPanelForBlockSeat) -- bu yüzden burası hep tür paneline geçer.
     modalGender = btn.dataset.gender;
 
     const targets = modalSeatIndices && modalSeatIndices.length ? modalSeatIndices : [modalSeatIdx];
@@ -2120,20 +2148,7 @@ document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]'
     if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
     else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
 
-    if(modalBlockSeatPos !== null || (activeBlockIdx !== null && modalSeatIndices && modalSeatIndices.length)){
-      // Tür blok tarafından zaten sabit (bkz. openBlockSeatModal/
-      // startBulkSaleBtn) — tekli ya da çoklu blok koltuğunda bilet türü
-      // paneli atlanıp doğrudan alıcı bilgisine geçiliyor.
-      buyerNameInput.value = '';
-      if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
-      buyerNoteText.textContent = currentRole === 'guest'
-        ? 'Biletin bu isimle düzenlenecek.'
-        : 'Opsiyonel — boş bırakılabilir.';
-      showModalPanel('buyer');
-      buyerNameInput.focus();
-    } else {
-      showModalPanel('tier');
-    }
+    showModalPanel('tier');
   });
 });
 

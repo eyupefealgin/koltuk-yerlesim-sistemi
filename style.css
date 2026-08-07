@@ -1277,6 +1277,16 @@ select option{
   justify-self: start;
 }
 
+/* Blok içi koltuklarda artık cinsiyet ayrımı yok (bkz. script.js
+   openBuyerPanelForBlockSeat) -- dahili state hâlâ "male" olarak yazılıyor
+   (purchase_stadium_seat'in atomik boş-kontrolü için) ama görsel olarak
+   mavi/pembe cinsiyet renkleri yerine tek, nötr bir "dolu" rengi gösteriliyor. */
+.seat-grid.block-seat-mode .seat.male{
+  background: var(--sold);
+  border-color: var(--sold);
+  color: #2B1A00;
+}
+
 /* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
 .stadium-legend{
   display: flex;
