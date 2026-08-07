@@ -616,9 +616,17 @@ from (
   select ev.id,
          jsonb_agg(
            case
+             when jsonb_typeof(elem) = 'array' then elem
              when jsonb_typeof(elem) = 'number' then
                (select coalesce(jsonb_agg('"m"'::jsonb), '[]'::jsonb) from generate_series(1, (elem)::int))
-             else elem
+             -- Bazi bloklar sayi degil JSON null olarak olusturulmus (hic
+             -- satis olmayan bloklar icin) -- bunlar 'number' dalina hic
+             -- girmiyordu, eski kodda oldugu gibi kalirdi ve daha sonra
+             -- purchase_stadium_seat'te "cannot get array length of a
+             -- scalar" hatasina yol aciyordu. Number/array disindaki HER SEY
+             -- (null dahil) bos bir diziye ceviriliyor -- hic satis yoksa
+             -- bu zaten dogru sonuc.
+             else '[]'::jsonb
            end
            order by ord
          ) as new_states
@@ -846,6 +854,13 @@ begin
   -- p_seat_pos'a kadar (veya zaten daha uzunsa mevcut uzunluguna) 'e' ile
   -- dolduruyoruz, SONRA hedef pozisyonu yaziyoruz -- hepsi ayni atomik UPDATE
   -- icinde, WHERE kosulu hala eski (pad'lenmemis) degere gore kontrol ediyor.
+  -- jsonb_array_length çağrısını jsonb_typeof(...) = 'array' ile korumadan
+  -- kullanmak riskli: coalesce(jsonb_array_length(x), 0) sadece x SQL NULL
+  -- ise devreye girer, x bir jsonb NUMBER/null gibi bir SKALER ise
+  -- jsonb_array_length "cannot get array length of a scalar" hatasıyla
+  -- PATLAR (coalesce hiç çalışmadan). Yukarıdaki migrasyon bunu artık '[]'e
+  -- çeviriyor ama migrasyon çalıştırılmadan önce oluşturulmuş satırlar için
+  -- de burası çökmemeli.
   update events
   set seat_states = jsonb_set(
         seat_states,
@@ -858,7 +873,7 @@ begin
             end
             order by i
           )
-          from generate_series(0, greatest(p_seat_pos, coalesce(jsonb_array_length(seat_states -> p_block_idx), 0) - 1)) as i
+          from generate_series(0, greatest(p_seat_pos, (case when jsonb_typeof(seat_states -> p_block_idx) = 'array' then jsonb_array_length(seat_states -> p_block_idx) else 0 end) - 1)) as i
         )
       ),
       updated_at = now()
@@ -883,7 +898,7 @@ begin
             end
             order by i
           )
-          from generate_series(0, greatest(p_seat_pos, coalesce(jsonb_array_length(seat_sales -> p_block_idx), 0) - 1)) as i
+          from generate_series(0, greatest(p_seat_pos, (case when jsonb_typeof(seat_sales -> p_block_idx) = 'array' then jsonb_array_length(seat_sales -> p_block_idx) else 0 end) - 1)) as i
         )
       ),
       updated_at = now()
