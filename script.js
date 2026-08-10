@@ -2928,6 +2928,31 @@ function showEmailPanel(name){
   });
 }
 
+// "Giriş Yap" / "Kayıt Ol" sekmeleri — normal sitelerdeki gibi görünsün diye
+// eklendi, ama Supabase Auth OTP zaten şifresiz: signInWithOtp() e-posta
+// önceden var mı yok mu diye ayrım YAPMADAN aynı kodu gönderiyor (yeni
+// kullanıcıyı otomatik oluşturuyor). Bu yüzden iki sekme de AYNI
+// emailLoginSendBtn akışına gidiyor — sadece başlık/açıklama metni değişiyor.
+let authTabMode = 'login';
+const authTabLoginBtn = document.getElementById('authTabLogin');
+const authTabSignupBtn = document.getElementById('authTabSignup');
+const emailLoginNoteEl = document.getElementById('emailLoginNote');
+const emailLoginTitleEl = document.getElementById('emailLoginTitle');
+
+function setAuthTab(mode){
+  authTabMode = mode;
+  authTabLoginBtn?.classList.toggle('is-active', mode === 'login');
+  authTabSignupBtn?.classList.toggle('is-active', mode === 'signup');
+  if(emailLoginTitleEl) emailLoginTitleEl.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
+  if(emailLoginNoteEl){
+    emailLoginNoteEl.textContent = mode === 'signup'
+      ? 'Hesap oluşturmak için e-postanı gir, sana bir doğrulama kodu gönderelim.'
+      : 'E-posta adresini gir, sana bir doğrulama kodu gönderelim.';
+  }
+}
+authTabLoginBtn?.addEventListener('click', () => setAuthTab('login'));
+authTabSignupBtn?.addEventListener('click', () => setAuthTab('signup'));
+
 function openEmailLoginModal(){
   if(!emailLoginOverlay) return;
   emailLoginErrorEl.hidden = true;
@@ -2936,6 +2961,7 @@ function openEmailLoginModal(){
     showEmailPanel('tickets');
     loadMyEmailTickets();
   } else {
+    setAuthTab('login');
     emailLoginEmailInput.value = '';
     showEmailPanel('email');
     emailLoginEmailInput.focus();

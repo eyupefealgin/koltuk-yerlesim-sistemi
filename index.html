@@ -523,10 +523,14 @@
         <path d="M6 6l12 12M18 6L6 18"/>
       </svg>
     </button>
-    <h3 id="emailLoginTitle">E-posta ile Giriş</h3>
+    <h3 id="emailLoginTitle">Giriş Yap</h3>
 
     <div class="email-step-panel" data-email-panel="email">
-      <p class="buyer-note">E-posta adresini gir, sana bir doğrulama kodu gönderelim.</p>
+      <div class="auth-tabs">
+        <button class="mode-chip is-active" id="authTabLogin" data-auth-tab="login" type="button">Giriş Yap</button>
+        <button class="mode-chip" id="authTabSignup" data-auth-tab="signup" type="button">Kayıt Ol</button>
+      </div>
+      <p class="buyer-note" id="emailLoginNote">E-posta adresini gir, sana bir doğrulama kodu gönderelim.</p>
       <input type="email" id="emailLoginEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta adresi">
       <button class="btn btn-primary" id="emailLoginSendBtn" type="button">Kod Gönder</button>
     </div>

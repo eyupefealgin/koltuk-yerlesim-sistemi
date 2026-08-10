@@ -1467,6 +1467,11 @@ select option{
 }
 .buyer-name-input:focus{ border-color: var(--gold); background: var(--tint-2); outline: none; }
 .buyer-note{ font-size: .78rem; color: var(--text-muted); margin: 0 0 16px; min-height: 1em; }
+
+/* Giriş Yap / Kayıt Ol sekmeleri — arka planda ikisi de aynı e-posta+kod
+   akışına gidiyor (bkz. script.js setAuthTab), sadece metin/başlık farklı.
+   .mode-chip'in var olan pil-buton görünümünü yeniden kullanıyor. */
+.auth-tabs{ display: flex; gap: 8px; margin-bottom: 18px; justify-content: center; }
 .hold-countdown{
   font-size: .78rem;
   font-weight: 600;
