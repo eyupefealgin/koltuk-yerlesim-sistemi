@@ -441,6 +441,16 @@ function canPurchase(){
   return currentRole === 'guest' || canEdit();
 }
 
+// Etkinlik/koltuk gezinmesi (renk/doluluk görmek) girişsiz kalıyor — sadece
+// bir koltuğa TIKLAYIP satın almaya BAŞLAMAK e-posta doğrulaması istiyor.
+// Personel (staff/admin) bu kontrolden muaf, sadece misafir akışını kapsıyor.
+function requireGuestLogin(){
+  if(currentRole !== 'guest' || verifiedEmail) return true;
+  toast('Bilet almak için önce e-posta ile giriş yapmalısın.');
+  openEmailLoginModal();
+  return false;
+}
+
 function clampDims(){
   cols = Math.min(40, Math.max(1, Number(colsInput.value) || 1));
   rows = Math.min(30, Math.max(1, Number(rowsInput.value) || 1));
@@ -586,8 +596,7 @@ function renderGrid(){
     return;
   }
 
-  seatGrid.classList.remove('stadium-mode');
-  seatGrid.classList.remove('general-mode');
+  seatGrid.classList.remove('stadium-mode', 'general-mode', 'block-seat-mode');
   if(stadiumLegendEl) stadiumLegendEl.hidden = true;
   // Seats are direct grid children so CSS Grid wraps them into real rows —
   // wrapping them in per-row divs previously made every row a single grid
@@ -727,7 +736,7 @@ function renderGeneralGrid(){
   }
   normalizeSalesLength();
 
-  seatGrid.classList.remove('stadium-mode');
+  seatGrid.classList.remove('stadium-mode', 'block-seat-mode');
   seatGrid.classList.add('general-mode');
   seatGrid.style.gridTemplateColumns = '';
   seatGrid.style.gridTemplateRows = '';
@@ -767,8 +776,10 @@ function handleSeatClick(idx, btn){
     return;
   }
   // Genel Etkinlik: ücretsiz/biletsiz tek giriş havuzu — bilet türü/ödeme
-  // adımı yok, tek tıkla katılım (bkz. joinGeneralEvent).
+  // adımı yok, tek tıkla katılım (bkz. joinGeneralEvent). Tek tık = doğrudan
+  // "satın alma" (katılma) olduğu için giriş kontrolü burada.
   if(venueType === 'genel'){
+    if(!requireGuestLogin()) return;
     joinGeneralEvent();
     return;
   }
@@ -794,6 +805,7 @@ function handleSeatClick(idx, btn){
     return;
   }
 
+  if(!requireGuestLogin()) return;
   openSeatModal(idx);
 }
 
@@ -850,6 +862,7 @@ function pruneAccessibleSeats(total){
 
 startBulkSaleBtn.addEventListener('click', () => {
   if(bulkSelected.size === 0) return;
+  if(!requireGuestLogin()) return;
   modalSeatIndices = [...bulkSelected];
   modalSeatIdx = null;
   modalBlockSeatPos = null;
@@ -1886,6 +1899,7 @@ function handleBlockSeatClick(pos, btn){
     return;
   }
 
+  if(!requireGuestLogin()) return;
   openBlockSeatModal(pos);
 }
 
@@ -3492,39 +3506,55 @@ function renderEventList(){
     const venueLabel = (VENUE_TYPES[ev.venue_type] || VENUE_TYPES.sinema).label;
     const statusLabel = ev.status === 'archived' ? 'Arşivlendi' : 'Aktif';
 
-    const card = document.createElement('div');
-    card.className = 'event-card';
-    card.dataset.status = ev.status;
+    // Tarih sütunu gün/ay olarak ayrı basılıyor (bkz. .program-date) —
+    // tam tarih (yıl dahil) yine de .program-date-full'de tam metin olarak
+    // kalıyor, bilgi kaybı yok.
+    let dayNum = '—', monShort = '';
+    if(ev.event_date){
+      try {
+        const d = new Date(`${ev.event_date}T00:00:00`);
+        dayNum = d.toLocaleDateString('tr-TR', { day: '2-digit' });
+        monShort = d.toLocaleDateString('tr-TR', { month: 'short' }).replace('.', '');
+      } catch { /* formatEventDate zaten bozuk tarihte ham metni döndürüyor */ }
+    }
 
-    card.innerHTML = `
-      <div class="event-card-top">
-        <span class="event-venue-badge"></span>
-        <span class="event-status-badge"></span>
+    const row = document.createElement('div');
+    row.className = 'program-row';
+    row.dataset.status = ev.status;
+
+    row.innerHTML = `
+      <div class="program-date"><div class="day"></div><div class="mon"></div></div>
+      <div class="program-info">
+        <div class="program-info-top">
+          <span class="program-venue"></span>
+          <span class="program-status-badge"></span>
+        </div>
+        <h3></h3>
+        <p class="program-date-full"></p>
+        <p class="program-note" hidden></p>
       </div>
-      <h3 class="event-card-name"></h3>
-      <p class="event-card-date"></p>
-      <p class="event-card-note" hidden></p>
-      <div class="event-card-occupancy">
+      <div class="program-fill">
         <div class="capacity-bar-bg"><div class="capacity-bar" style="width:${pct}%"></div></div>
         <span>%${pct} dolu · ${total} koltuk</span>
       </div>
-      <div class="event-card-actions">
+      <div class="program-actions">
         <button class="btn btn-gold btn-sm event-enter-btn" type="button">Gir</button>
         <button class="btn btn-ghost btn-sm admin-only event-archive-btn" type="button"></button>
         <button class="btn btn-ghost btn-sm admin-only event-delete-btn" type="button">Sil</button>
       </div>
     `;
-    // Afiş varsa kartın en üstüne ekle. safeImageUrl sadece http(s) geçirir.
+    // Afiş varsa tarih sütunundan sonra küçük bir küçük resim olarak ekle.
+    // safeImageUrl sadece http(s) geçirir.
     const poster = safeImageUrl(ev.poster_url);
     if(poster){
       const img = document.createElement('img');
-      img.className = 'event-card-poster';
+      img.className = 'program-poster';
       img.src = poster;
       img.alt = '';
       img.loading = 'lazy';
-      // Kırık/erişilemeyen görsel kartı bozmasın diye kendini gizlesin.
+      // Kırık/erişilemeyen görsel satırı bozmasın diye kendini gizlesin.
       img.addEventListener('error', () => img.remove());
-      card.prepend(img);
+      row.querySelector('.program-info').before(img);
     }
 
     // textContent (not innerHTML) for anything derived from user-entered
@@ -3532,23 +3562,25 @@ function renderEventList(){
     // ev.status'un kendisi de artık template string'e gömülmüyor —
     // .dataset ataması her zaman düz metin olarak yazılır, attribute'tan
     // kaçıp HTML enjekte etme riski taşımaz (bkz. güvenlik denetimi).
-    card.querySelector('.event-venue-badge').textContent = venueLabel;
-    card.querySelector('.event-status-badge').textContent = statusLabel;
-    card.querySelector('.event-status-badge').dataset.status = ev.status;
-    card.querySelector('.event-card-name').textContent = ev.name;
-    card.querySelector('.event-card-date').textContent = formatEventDate(ev.event_date);
-    card.querySelector('.event-archive-btn').textContent = ev.status === 'archived' ? 'Aktifleştir' : 'Arşivle';
+    row.querySelector('.program-date .day').textContent = dayNum;
+    row.querySelector('.program-date .mon').textContent = monShort;
+    row.querySelector('.program-venue').textContent = venueLabel;
+    row.querySelector('.program-status-badge').textContent = statusLabel;
+    row.querySelector('.program-status-badge').dataset.status = ev.status;
+    row.querySelector('h3').textContent = ev.name;
+    row.querySelector('.program-date-full').textContent = formatEventDate(ev.event_date);
+    row.querySelector('.event-archive-btn').textContent = ev.status === 'archived' ? 'Aktifleştir' : 'Arşivle';
     if(typeof ev.note === 'string' && ev.note.trim()){
-      const noteEl = card.querySelector('.event-card-note');
+      const noteEl = row.querySelector('.program-note');
       noteEl.textContent = ev.note;
       noteEl.hidden = false;
     }
 
-    card.querySelector('.event-enter-btn').addEventListener('click', () => enterEvent(ev.id, ev.name));
-    card.querySelector('.event-archive-btn').addEventListener('click', () => toggleArchiveEvent(ev));
-    card.querySelector('.event-delete-btn').addEventListener('click', () => deleteEventRow(ev));
+    row.querySelector('.event-enter-btn').addEventListener('click', () => enterEvent(ev.id, ev.name));
+    row.querySelector('.event-archive-btn').addEventListener('click', () => toggleArchiveEvent(ev));
+    row.querySelector('.event-delete-btn').addEventListener('click', () => deleteEventRow(ev));
 
-    eventGridEl.appendChild(card);
+    eventGridEl.appendChild(row);
   });
 }
 

@@ -1,92 +1,109 @@
 /* ═══════════════════════════════════════════════════════════
-   BiletHub — "Editoryal Karanlık" tema
-   Kısıtlama ve tipografiden gelen premium: ince tek-piksel çizgiler,
-   düz dolgular (gradyan/parıltı yok), serif başlık + sade gövde fontu,
-   tek bir vurgu rengi (bordo). Bu, önceki "Gece Prizması" (mor+kehribar,
-   camsı parıltılı) temanın yerini alıyor — kullanıcı ikisini karşılaştırıp
-   bunu seçti; jenerik "AI SaaS kiti" hissi renk değil bu parıltı/gradyan/
-   aşırı-yuvarlak biçim dilinden geliyordu.
+   BiletHub — "Perde & Kadife" tema
+   Bilet konusunun kendi malzemesinden gelen bir kimlik: kadife perde
+   yeşili zemin, mat pirinç vurgu, bilet kütüğü/program listesi motifleri.
+   Önceki "Editoryal Karanlık" (sıcak siyah, tek bordo vurgu, Fraunces+
+   Outfit) temasının YERİNE geçiyor — kullanıcı önce o yönü seçmişti,
+   sonra "daha premium hissettiren, tamamen farklı" bir yön istedi. Bu
+   tema onun yerini alıyor; renk/font isimleri (--gold, --font-display vb.)
+   tarihsel nedenlerle aynı kaldı, DEĞERLERİ değişti.
    ═══════════════════════════════════════════════════════════ */
 
 /* Font linki HTML <head>'de (bkz. index.html vb.) — burada @import ile
    İKİNCİ bir istek olarak tekrar çekmiyoruz. @import ayrıca CSSOM
    oluşturulana kadar keşfedilmediği için (HTML <link>'e göre bir tur
    gecikme) performans açısından da daha kötüydü — bkz. güvenlik/
-   optimizasyon denetimi notları. Sadece ihtiyaç olan ağırlıklar
-   (400/500/600/700/800, italik yok — kullanılmıyor) çekiliyor.
-   Fraunces:wght@400;500;600;700 + Outfit:wght@400;500;600;700;800 */
+   optimizasyon denetimi notları. Sadece ihtiyaç olan ağırlıklar çekiliyor.
+   Cormorant:ital,wght@0,300;0,500;0,600;1,500 + Work Sans:wght@400;500;600;700 */
 
 :root{
-  /* Zemin — sıcak neredeyse-siyah (mor eğilim yok, kağıt/mürekkep hissi) */
-  --bg-deep: #0E0C09;
-  --bg: #14120F;
-  --bg-card: #1C1916;
-  --bg-card-hover: #221E1A;
-  --bg-elevated: #221E1A;
+  /* Zemin — kadife perde: YEŞİL eğilimli neredeyse-siyah (Editoryal
+     Karanlık'ın sıcak kahve-siyahının karşıtı bir karakter — "Perde &
+     Kadife" yönü, bkz. tasarım önizlemesi). */
+  --bg-deep: #060907;
+  --bg: #0B120F;
+  --bg-card: #101915;
+  --bg-card-hover: #16201A;
+  --bg-elevated: #16201A;
   /* İki ayrı iş: --surface içe gömülü kontroller (input, chip, stat) için
      çok soluk bir doku; --surface-raised modal/kart/panel gibi YÜKSELTİLMİŞ
      katmanlar için neredeyse opak düz zemin (camsı parıltı yok). */
-  --surface: rgba(255, 255, 255, 0.035);
-  --surface-raised: rgba(28, 25, 22, 0.97);
-  --surface-solid: #1C1916;
+  --surface: rgba(234, 227, 210, 0.04);
+  --surface-raised: rgba(16, 25, 21, 0.97);
+  --surface-solid: #101915;
 
-  /* Kenarlıklar — ince tek-piksel çizgiler, parıltılı cam kenarlığı değil */
-  --border: rgba(255, 255, 255, 0.1);
-  --border-hover: rgba(255, 255, 255, 0.24);
-  --glass-bg: rgba(255, 255, 255, 0.035);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  /* Kenarlıklar — kadifede ince bir iplik gibi, parıltılı cam kenarlığı değil */
+  --border: rgba(234, 227, 210, 0.14);
+  --border-hover: rgba(212, 179, 120, 0.4);
+  --glass-bg: rgba(234, 227, 210, 0.04);
+  --glass-border: rgba(234, 227, 210, 0.14);
 
-  /* Metin — sıcak kırık beyaz (kağıt üstü mürekkep) */
-  --text: #F2EDE6;
-  --text-secondary: #9C9186;
-  --text-muted: #8B8074;
-  --text-bright: #FBF8F3;
+  /* Metin — parşömen tonlu kırık beyaz */
+  --text: #EAE3D2;
+  --text-secondary: #9C9483;
+  --text-muted: #877F6E;
+  --text-bright: #F5EFDE;
 
-  /* Vurgu — tek renk: derin bordo. Bileşen CSS'i tarihsel olarak --gold*
-     isimleriyle yazıldığı için isimleri değiştirmek yerine takma ad
-     verdik: --gold artık "vurgu rengi" anlamına geliyor (ne altın ne mor). */
-  --accent: #9C2A4C;        /* buton dolgusu (üstünde beyaz metin) — beyazla 7.5:1 */
-  --accent-light: #C9587E;  /* ince degrade/çizgi kalıntıları için orta ton */
-  --accent-dim: #D9748F;    /* koyu zeminde OKUNAN metin rolü (rozet/etiket) — beyazdan değil, zemin karşıtlığından ölçüldü */
+  /* Vurgu — mat pirinç (brass). Parlak/gradyan altın değil, düz metal
+     dolgu. Bileşen CSS'i tarihsel olarak --gold* isimleriyle yazıldığı
+     için isimleri değiştirmek yerine değerlerini güncelledik. */
+  --accent: #B99456;
+  --accent-light: #D4B378;
+  --accent-dim: #C9A870;
   --gold: var(--accent);
   --gold-light: var(--accent-light);
   --gold-dim: var(--accent-dim);
-  --gold-glow: rgba(156, 42, 76, 0.28);
-  --gold-subtle: rgba(156, 42, 76, 0.12);
+  --gold-glow: rgba(185, 148, 86, 0.24);
+  --gold-subtle: rgba(185, 148, 86, 0.12);
 
-  /* Cinsiyet renkleri — koltuk numarası beyaz basıldığı için 4.5:1'i
-     geçecek kadar koyu tutuldu (önceki a11y turunda ölçülmüştü). Artık
-     gradyan/parıltı yok, düz dolgu + ince kenarlık. */
-  --male: #3569BE;
-  --male-border: #4E86DC;
-  --male-bg: rgba(53, 105, 190, 0.16);
+  /* Cinsiyet renkleri — futbol bloklarında kaldırıldı (bkz.
+     openBuyerPanelForBlockSeat) ama klasik/tiyatro/konser modunda hâlâ
+     kullanılıyor. Mavi/gül kimliği korunuyor, kadife paletine göre
+     derinleştirildi. */
+  --male: #3E5C73;
+  --male-border: #5C82A0;
+  --male-bg: rgba(62, 92, 115, 0.18);
 
-  --female: #A84770;
-  --female-border: #D8759F;
-  --female-bg: rgba(168, 71, 112, 0.16);
+  --female: #8C4058;
+  --female-border: #B5637A;
+  --female-bg: rgba(140, 64, 88, 0.18);
 
-  /* Durum — satılan kehribar: vurgu bordosundan ayrı bir iş yapıyor,
-     mavi/gül dolgularla karışmaması için farklı bir ton. */
+  /* Durum — satılan kehribar AYNEN KALIYOR: pirinç vurgudan (buton/aktif
+     durum) ayrı bir iş yapıyor, mavi/gül dolgularla karışmaması için hâlâ
+     dördüncü, farklı bir ton (eski "fener ışığı" amberi kadife/pirinç
+     dünyasına da uyuyor). */
   --sold: #E8A44C;
   --sold-light: #F6BC6E;
   --sold-glow: rgba(232, 164, 76, 0.22);
-  --access: #2FD4C0;         /* erişilebilir koltuk rozeti */
-  --empty-bg: rgba(255, 255, 255, 0.03);
-  --empty-border: rgba(255, 255, 255, 0.13);
-  --seat-bg: rgba(255, 255, 255, 0.03);
+  /* Bordo/şarap — sadece kıtlık/durum METNİ için (bkz. program listesi
+     "Son N koltuk"), koltuk halkası rengiyle KARIŞTIRILMIYOR bilerek. */
+  --claret: #8C2A3D;
+  --claret-bright: #B5405A;
+  --access: #3DBF9E;         /* erişilebilir koltuk rozeti — pirinç/kadife dünyasına uygun zümrüt, koyu metinle (bkz. #04322D) yeterli kontrast için aydınlık tutuldu */
+  --empty-bg: rgba(234, 227, 210, 0.03);
+  --empty-border: rgba(234, 227, 210, 0.18);
+  --seat-bg: rgba(234, 227, 210, 0.03);
   --success: #3ECF8E;
   --danger: #E2565A;
-  --warn: #E0A44A;
+  --warn: #C9A870;
 
   /* Koyu zeminde yüzey tonları */
-  --tint: rgba(255, 255, 255, 0.03);
-  --tint-2: rgba(255, 255, 255, 0.055);
-  --tint-3: rgba(255, 255, 255, 0.09);
+  --tint: rgba(234, 227, 210, 0.03);
+  --tint-2: rgba(234, 227, 210, 0.055);
+  --tint-3: rgba(234, 227, 210, 0.09);
 
   /* Üst kenar parlaması — artık yalnızca gerçek 3D ihtiyaç duyulan tek
      yerde (stadyum sahası) kullanılıyor, koltuklarda kaldırıldı. */
-  --hi: rgba(255, 255, 255, 0.08);
-  --hi-soft: rgba(255, 255, 255, 0.16);
+  --hi: rgba(234, 227, 210, 0.06);
+  --hi-soft: rgba(234, 227, 210, 0.12);
+
+  /* Bilet kütüğü (stub) için AYRI bir yüzey — kadife zemine kağıt/parşömen
+     katmanı olarak biniyor (bkz. ticketView), diğer her şey kadife üstünde
+     kalıyor. "Kadife üstünde kağıt" — iki dokuyu bilerek ayırıyor. */
+  --parchment: #F1E9D8;
+  --parchment-line: #DACBA6;
+  --ink: #1B1712;
+  --ink-dim: #5B5142;
 
   /* Gölgeler — düz ve sığ; renkli "glow" yok */
   --sh-1: rgba(0, 0, 0, 0.24);
@@ -109,10 +126,12 @@
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.4);
 
-  /* Tipografi — serif başlık (Fraunces) + sade gövde (Outfit). İkisi de
-     Inter/Roboto/Arial değil, kasıtlı bir eşleşme. */
-  --font: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Fraunces', Georgia, serif;
+  /* Tipografi — ince/yüksek-kontrastlı serif başlık (Cormorant) + sıcak
+     hümanist gövde (Work Sans). İkisi de Inter/Space Grotesk değil,
+     kasıtlı bir eşleşme — "program/kütük" hissi Cormorant'ın inceliğinden
+     geliyor. */
+  --font: 'Work Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Cormorant', Georgia, 'Times New Roman', serif;
 }
 
 /* ===== Reset & Base ===== */
@@ -125,12 +144,26 @@ body{
   line-height: 1.6;
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
 }
 
 /* Zeminde yüzen bulanık kapsüller (eski "Gece Prizması" mirası) kaldırıldı —
    editoryal dil metnin düz bir zemin üstünde durmasını istiyor, arkada
    ışık topu/spotlight yok. Öğeler DOM'da zararsız biçimde kalıyor. */
 .bg-decor{ display: none; }
+
+/* Kadife dokusu — ince bir SVG gren, gerçek kumaş hissi için. Tamamen
+   kararlı (CSS-only), tıklamayı/erişilebilirliği etkilemiyor. */
+body::before{
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
 
 button{ font-family: inherit; cursor: pointer; border: none; background: none; }
 input{ font-family: inherit; }
@@ -188,7 +221,7 @@ input{ font-family: inherit; }
   margin: 0 auto 22px;
   border-radius: var(--radius-lg);
   background: var(--gold-subtle);
-  border: 1px solid rgba(156, 42, 76, 0.24);
+  border: 1px solid rgba(185, 148, 86, 0.32);
   color: var(--gold);
   display: flex;
   align-items: center;
@@ -259,23 +292,24 @@ input{ font-family: inherit; }
   letter-spacing: 0.01em;
 }
 
+/* Mühür butonu — mat pirinç dolgu + koyu mürekkep metin (beyaz metin orta
+   tonlu pirinçte yeterli kontrast vermiyordu, bkz. a11y notu). */
 .btn-primary, .btn-gold{
   background: var(--gold);
-  color: #fff;
+  color: var(--ink);
 }
 .btn-primary:hover, .btn-gold:hover{
-  background: var(--accent-dim, #7E2039);
-  background: #841F3E;
+  background: var(--gold-light);
 }
 .btn-primary:active, .btn-gold:active{ transform: translateY(1px); }
 
 .btn-ghost-gold{
   background: var(--gold-subtle);
-  border: 1px solid rgba(156, 42, 76, 0.28);
+  border: 1px solid rgba(185, 148, 86, 0.32);
   color: var(--gold-dim);
 }
 .btn-ghost-gold:hover{
-  background: rgba(156, 42, 76, 0.18);
+  background: rgba(185, 148, 86, 0.2);
   border-color: var(--gold);
 }
 
@@ -338,7 +372,7 @@ body[data-page="public"] #logoutBtn{ display: none; }
   letter-spacing: 1px;
   color: var(--gold-dim);
   background: var(--gold-subtle);
-  border: 1px solid rgba(156, 42, 76, 0.22);
+  border: 1px solid rgba(185, 148, 86, 0.3);
   padding: 7px 14px;
   border-radius: var(--radius-tag);
 }
@@ -459,7 +493,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .preset-chip.is-active{
   background: var(--gold);
   border-color: var(--gold);
-  color: #fff;
+  color: var(--ink);
   font-weight: 700;
 }
 
@@ -623,9 +657,9 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .filter-chip.is-active {
   background: var(--gold);
   border-color: var(--gold);
-  color: #fff;
+  color: var(--ink);
 }
-.filter-chip.is-active .swatch { border-color: rgba(255, 255, 255, 0.6); }
+.filter-chip.is-active .swatch { border-color: rgba(27, 23, 18, 0.5); }
 /* .filter-chip kendi display: inline-flex kuralını tanımladığı için
    tarayıcının varsayılan [hidden]{display:none} kuralını (UA-origin,
    eşit önem/özgüllükte author kuralına kaybediyor) burada AÇIKÇA ezmemiz
@@ -669,7 +703,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .swatch{
   width: 18px;
   height: 18px;
-  border-radius: var(--radius-xs);
+  border-radius: 50%;
   display: inline-block;
   border: 1.5px solid;
   transition: transform .15s ease;
@@ -917,69 +951,65 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 .event-filter-price input{ width: 90px; }
 .event-filter-name{ flex: 1 1 200px; min-width: 160px; }
 
+/* ═══════════════════════════════════════
+   PROGRAM LİSTESİ — etkinlikler kart ızgarası değil, bir tiyatro/gala
+   programı gibi tek sütun sıralanıyor: tarih sol sabit sütun, doluluk sağda
+   sessizce bekliyor. "Perde & Kadife" yönünün kütük/program motifi.
+   ═══════════════════════════════════════ */
 .event-grid{
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-}
-/* Kart: düz zemin, ince tek-piksel kenarlık, gölge/parıltı yok. Afiş kartın
-   ÜSTÜNE tam kenara kadar (full-bleed) oturuyor — dergi/galeri hissi. */
-.event-card{
-  background: var(--surface-raised);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: border-color .2s ease;
 }
-.event-card:hover{ border-color: var(--border-hover); }
-.event-card[data-status="archived"]{ opacity: .55; }
-.event-card-top{
+.program-row{
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 18px 22px 0;
-}
-/* Eskiden dolgulu "hap" rozetti — artık düz metin etiket: küçük harf
-   boyutu, geniş harf aralığı, arka plan yok. */
-.event-venue-badge{
-  font-size: .7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  color: var(--gold-dim);
-}
-.event-status-badge{
-  font-size: .68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--success);
-}
-.event-status-badge[data-status="archived"]{ color: var(--text-muted); }
-.event-card-name{
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-bright);
-  margin: 6px 22px 0;
-  padding-bottom: 12px;
+  gap: 20px;
+  padding: 20px 8px;
   border-bottom: 1px solid var(--border);
+  transition: background .2s ease;
+  flex-wrap: wrap;
 }
-.event-card-date{ font-size: .85rem; color: var(--text-secondary); padding: 12px 22px 0; }
-.event-card-note{
-  font-size: .8rem;
-  color: var(--gold-dim);
-  padding: 8px 22px 0;
-  white-space: pre-wrap;
+.program-row:first-child{ border-top: 1px solid var(--border); }
+.program-row:hover{ background: rgba(234, 227, 210, 0.03); }
+.program-row[data-status="archived"]{ opacity: .5; }
+
+.program-date{ width: 60px; flex-shrink: 0; text-align: center; }
+.program-date .day{
+  font-family: var(--font-display); font-size: 1.85rem; font-weight: 600;
+  color: var(--gold-dim); line-height: 1;
 }
-.event-card-note[hidden]{ display: none; }
-.event-card-occupancy{ display: flex; flex-direction: column; gap: 6px; padding: 0 22px; }
-.event-card-occupancy span{ font-size: .78rem; color: var(--text-muted); }
-.event-card-actions{ display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 22px 22px; margin-top: 4px; }
-.event-card-actions .btn{ flex: 1 1 auto; }
+.program-date .mon{
+  font-size: .64rem; text-transform: uppercase; letter-spacing: .12em; color: var(--text-muted);
+}
+
+.program-poster{
+  width: 54px; height: 54px; border-radius: var(--radius-sm); object-fit: cover;
+  flex-shrink: 0; background: var(--gold-subtle);
+}
+
+.program-info{ flex: 1 1 240px; min-width: 0; }
+.program-info-top{ display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+.program-venue{
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--gold-dim);
+}
+.program-status-badge{
+  font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--success);
+}
+.program-status-badge[data-status="archived"]{ color: var(--text-muted); }
+.program-info h3{
+  font-family: var(--font-display); font-size: 1.22rem; font-weight: 500; color: var(--text-bright);
+  margin: 0; line-height: 1.25;
+}
+.program-date-full{ font-size: .8rem; color: var(--text-secondary); margin-top: 2px; }
+.program-note{
+  font-size: .8rem; color: var(--text-secondary); margin-top: 6px; white-space: pre-wrap;
+}
+.program-note[hidden]{ display: none; }
+
+.program-fill{ display: flex; flex-direction: column; gap: 6px; width: 170px; flex-shrink: 0; }
+.program-fill span{ font-size: .76rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.program-actions{ display: flex; gap: 8px; flex-shrink: 0; }
 
 .event-name-badge{ font-size: .82rem; font-weight: 600; color: var(--text-secondary); }
 .event-name-badge[hidden]{ display: none; }
@@ -1031,7 +1061,7 @@ select option{
   transition: border-color .2s ease, color .2s ease, background .2s ease;
 }
 .mode-chip:hover{ border-color: var(--gold); color: var(--gold-dim); }
-.mode-chip.is-active{ background: var(--gold); border-color: var(--gold); color: #fff; }
+.mode-chip.is-active{ background: var(--gold); border-color: var(--gold); color: var(--ink); }
 
 /* Grid Toolbar & Search Box */
 .grid-toolbar {
@@ -1090,7 +1120,7 @@ select option{
 .grid-scroll{ overflow-x: auto; padding-bottom: 10px; text-align: center; }
 .grid-scroll::-webkit-scrollbar{ height: 6px; }
 .grid-scroll::-webkit-scrollbar-track{ background: var(--tint); border-radius: 3px; }
-.grid-scroll::-webkit-scrollbar-thumb{ background: rgba(156, 42, 76, 0.25); border-radius: 3px; }
+.grid-scroll::-webkit-scrollbar-thumb{ background: rgba(185, 148, 86, 0.32); border-radius: 3px; }
 
 .seat-grid{ display: inline-grid; gap: 10px; margin: 0 auto; padding: 8px; }
 
@@ -1098,7 +1128,11 @@ select option{
   position: relative;
   width: 50px;
   height: 50px;
-  border-radius: var(--radius-xs);
+  /* Blok/havuz kartları (.stadium-block, sonradan tanımlı) kendi
+     dikdörtgen border-radius'unu ezerek kazanıyor — bu yüzden yuvarlak
+     hâle sadece gerçek tekil koltuklar (klasik + blok içi) geliyor,
+     tıpkı "Perde & Kadife" önizlemesindeki koltuk noktaları gibi. */
+  border-radius: 50%;
   border: 1px solid var(--empty-border);
   background: var(--seat-bg);
   color: var(--text-secondary);
@@ -1121,7 +1155,7 @@ select option{
 .seat.sold{ box-shadow: 0 0 0 2px var(--sold) inset; }
 
 .seat.bulk-selected{
-  box-shadow: 0 0 0 2px var(--male-border) inset, 0 0 0 5px var(--male-bg);
+  box-shadow: 0 0 0 2px var(--gold) inset, 0 0 0 5px var(--gold-subtle);
   transform: translateY(-2px);
 }
 
@@ -1473,37 +1507,82 @@ select option{
 .payment-disclaimer[hidden]{ display: none; }
 
 /* ═══════════════════════════════════════
-   TICKET VIEW (QR + bilet kodu)
+   TICKET VIEW — kadife üstünde kağıt: bilet gerçek bir kütük/stub gibi,
+   parşömen zemin + koparma çizgisi + yan "Admit One" etiketiyle basılıyor.
    ═══════════════════════════════════════ */
-.ticket-modal{ max-width: 400px; }
+.ticket-modal{ max-width: 440px; }
 .ticket-card{
-  background: var(--bg-card);
-  border: 1px dashed var(--gold);
+  background: var(--parchment);
   border-radius: var(--radius-sm);
-  padding: 22px;
   margin-bottom: 20px;
+  display: flex;
+  align-items: stretch;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+.ticket-stub-main{
+  flex: 1;
+  min-width: 0;
+  padding: 26px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
 }
-.ticket-event-name{ font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; color: var(--text-bright); text-align: center; }
-.ticket-seat-label{ font-size: .95rem; font-weight: 700; color: var(--gold-dim); }
-.ticket-tier-label{ font-size: .85rem; color: var(--text-secondary); }
-.ticket-buyer-name{ font-size: .85rem; color: var(--text-secondary); }
+.ticket-event-name{ font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; color: var(--ink); text-align: center; }
+.ticket-seat-label{ font-size: .95rem; font-weight: 700; color: var(--claret); }
+.ticket-tier-label{ font-size: .85rem; color: var(--ink-dim); }
+.ticket-buyer-name{ font-size: .85rem; color: var(--ink-dim); }
 .ticket-buyer-name[hidden]{ display: none; }
 .ticket-qr{ margin: 14px 0 8px; }
 .ticket-qr svg{ display: block; width: 160px; height: 160px; }
 .ticket-code{
   font-family: 'Courier New', monospace;
-  font-size: .82rem;
-  letter-spacing: 1px;
-  color: var(--text);
-  background: var(--gold-subtle);
+  font-size: .78rem;
+  letter-spacing: .5px;
+  color: var(--ink-dim);
+  background: rgba(27, 23, 18, 0.06);
   padding: 6px 12px;
   border-radius: var(--radius-tag);
 }
-.ticket-checkin-status{ font-size: .78rem; color: var(--text-muted); margin-top: 8px; }
+.ticket-checkin-status{ font-size: .78rem; color: var(--ink-dim); margin-top: 8px; }
+
+/* Koparma çizgisi — kesikli çizgi + modal zeminiyle aynı renkte iki
+   "delik" (üst/alt), gerçek bir bilet kütüğünün perforasyonu gibi. */
+.ticket-perf{
+  width: 0;
+  flex-shrink: 0;
+  border-left: 2px dashed var(--parchment-line);
+  position: relative;
+}
+.ticket-perf::before, .ticket-perf::after{
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  background: var(--surface-raised);
+  border-radius: 50%;
+  left: -11px;
+}
+.ticket-perf::before{ top: -10px; }
+.ticket-perf::after{ bottom: -10px; }
+
+.ticket-side{
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+}
+.ticket-side span{
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: .66rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--claret);
+  font-weight: 600;
+}
 .btn-danger-ghost{
   background: transparent;
   border: 1px solid rgba(217, 80, 80, 0.35);
@@ -1522,6 +1601,10 @@ select option{
   .modal-overlay[hidden]{ display: none !important; }
   .modal-close, .ticket-actions{ display: none !important; }
   .modal{ box-shadow: none !important; border: none !important; }
+  /* Perforasyon "delikleri" kadife zemin rengini gösteriyordu (bkz.
+     .ticket-perf) — kağıda basılınca beyazın üstünde koyu noktalar olarak
+     çıkardı, burada beyaza çeviriyoruz. */
+  .ticket-perf::before, .ticket-perf::after{ background: #fff !important; }
 }
 
 /* ═══════════════════════════════════════
@@ -1568,16 +1651,9 @@ select option{
 .my-ticket-history-item .hist-event{ font-weight: 700; color: var(--text-bright); }
 .my-ticket-history-item .hist-seat{ color: var(--text-muted); font-size: .78rem; }
 
-/* ═══════════════════════════════════════
-   AFİŞ GÖRSELİ — kartın kenarına tam oturuyor (full-bleed)
-   ═══════════════════════════════════════ */
-.event-card-poster{
-  width: 100%;
-  height: 150px;
-  object-fit: cover;
-  display: block;
-  background: var(--gold-subtle);
-}
+/* Afiş görseli artık program satırında küçük bir küçük resim (bkz.
+   .program-poster, PROGRAM LİSTESİ bölümünde tanımlı) — eski full-bleed
+   kart afişi kaldırıldı. */
 .poster-row{ display: flex; gap: 10px; flex-wrap: wrap; }
 .poster-row input{
   flex: 1 1 260px;
@@ -1683,7 +1759,11 @@ select option{
   .event-list-view{ padding: 22px 16px 60px; }
   .event-list-header-actions{ width: 100%; }
   .event-list-header-actions .btn{ flex: 1 1 auto; }
-  .event-grid{ grid-template-columns: 1fr; }
+  .program-row{ gap: 12px; padding: 16px 4px; }
+  .program-poster{ display: none; }
+  .program-fill{ width: 100%; order: 5; }
+  .program-actions{ width: 100%; order: 6; }
+  .program-actions .btn{ flex: 1 1 auto; }
 
   .event-filter-bar{ padding: 12px; gap: 10px; }
   .event-filter-name{ flex: 1 1 100%; }
@@ -1717,10 +1797,13 @@ select option{
   .modal{ padding: 24px 20px; }
   .ticket-qr svg{ width: 140px; height: 140px; }
   .modal-info-actions .btn{ flex: 1 1 100%; }
+  /* Dar ekranda kütük/perforasyon şeridine yer yok — sadece ana bilet
+     içeriği kalıyor. */
+  .ticket-perf, .ticket-side{ display: none; }
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar{ width: 8px; }
 ::-webkit-scrollbar-track{ background: var(--bg); }
-::-webkit-scrollbar-thumb{ background: rgba(156, 42, 76, 0.22); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover{ background: rgba(156, 42, 76, 0.36); }
+::-webkit-scrollbar-thumb{ background: rgba(185, 148, 86, 0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover{ background: rgba(185, 148, 86, 0.44); }

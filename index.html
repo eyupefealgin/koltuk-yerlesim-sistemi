@@ -6,10 +6,10 @@
 <title>BiletHub</title>
 <meta name="description" content="Sinema tarzı koltuk yerleşim ve bilet satış sistemi — misafir, satış ve yönetici rollü, çoklu cihaz senkronizasyonlu.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="theme-color" content="#0A0813">
+<meta name="theme-color" content="#0B120F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,500;0,600;1,500&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body data-page="public">
@@ -441,13 +441,17 @@
     <h3 id="ticketViewTitle">Biletiniz Hazır</h3>
 
     <div class="ticket-card" id="ticketCard">
-      <div class="ticket-event-name" id="ticketEventName"></div>
-      <div class="ticket-seat-label" id="ticketSeatLabel"></div>
-      <div class="ticket-tier-label" id="ticketTierLabel"></div>
-      <div class="ticket-buyer-name" id="ticketBuyerName" hidden></div>
-      <div class="ticket-qr" id="ticketQrHolder"></div>
-      <div class="ticket-code" id="ticketCodeText"></div>
-      <p class="ticket-checkin-status" id="ticketCheckinStatus"></p>
+      <div class="ticket-stub-main">
+        <div class="ticket-event-name" id="ticketEventName"></div>
+        <div class="ticket-seat-label" id="ticketSeatLabel"></div>
+        <div class="ticket-tier-label" id="ticketTierLabel"></div>
+        <div class="ticket-buyer-name" id="ticketBuyerName" hidden></div>
+        <div class="ticket-qr" id="ticketQrHolder"></div>
+        <div class="ticket-code" id="ticketCodeText"></div>
+        <p class="ticket-checkin-status" id="ticketCheckinStatus"></p>
+      </div>
+      <div class="ticket-perf" aria-hidden="true"></div>
+      <div class="ticket-side"><span>Admit One</span></div>
     </div>
 
     <div class="ticket-actions">
