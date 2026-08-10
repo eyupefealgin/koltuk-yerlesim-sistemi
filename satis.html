@@ -194,6 +194,15 @@
     </div>
 
     <div class="ticket-prices">
+      <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
+      <div class="payment-method-row">
+        <label class="dynamic-toggle"><input type="checkbox" id="paymentMethodKart"><span>Kart</span></label>
+        <label class="dynamic-toggle"><input type="checkbox" id="paymentMethodNakit"><span>Nakit</span></label>
+        <button class="btn btn-primary btn-sm" id="savePaymentMethodsBtn" type="button">Kaydet</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
       <span class="ticket-prices-label">Dinamik Fiyatlandırma:</span>
       <label class="dynamic-toggle">
         <input type="checkbox" id="dynEnabled">
@@ -411,6 +420,11 @@
         </label>
       </div>
       <p class="stadium-note" id="newEventStadiumNote" hidden>Futbol Sahası için sabit 44 bloklu stadyum düzeni kullanılır.</p>
+      <div class="payment-method-row" id="newEventPaymentRow">
+        <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
+        <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentKart" checked><span>Kart</span></label>
+        <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentNakit" checked><span>Nakit</span></label>
+      </div>
       <button class="btn btn-primary" id="submitCreateEventBtn" type="button">Etkinliği Oluştur</button>
     </div>
   </div>

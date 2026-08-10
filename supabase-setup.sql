@@ -505,6 +505,11 @@ alter table events add column if not exists accessible_seats jsonb not null
 -- acik.
 alter table events add column if not exists note text;
 
+-- Etkinlik basina hangi odeme yontemlerinin (kart/nakit) kabul edildigi --
+-- misafirin satin alma ekraninda sadece burada listelenen butonlar cikar.
+-- Varsayilan ikisi de (eski etkinlikler icin geriye donuk uyumlu).
+alter table events add column if not exists payment_methods jsonb not null default '["kart","nakit"]'::jsonb;
+
 -- ============================================================
 -- GENEL ETKINLIK: UCRETSIZ/BILETSIZ TEK GIRIS HAVUZU (etkinlik basina)
 -- ============================================================
@@ -945,6 +950,33 @@ begin
 end;
 $$;
 grant execute on function cancel_stadium_seat(uuid, int, int, text) to anon, authenticated;
+
+-- ============================================================
+-- FAVORILER (sadece giris yapmis misafirler)
+-- ============================================================
+-- Her satir "bu kullanici bu etkinligi favoriledi" demek -- RLS sayesinde
+-- herkes SADECE kendi favorilerini gorebiliyor/ekleyip silebiliyor, client
+-- ayrica bir .eq('user_id', ...) filtrelemesine gerek duymuyor (bkz.
+-- script.js loadFavorites/toggleFavorite).
+create table if not exists favorites (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_id uuid not null references events(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, event_id)
+);
+alter table favorites enable row level security;
+
+drop policy if exists "kullanici kendi favorilerini gorebilir" on favorites;
+create policy "kullanici kendi favorilerini gorebilir" on favorites
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "kullanici kendi favorisini ekleyebilir" on favorites;
+create policy "kullanici kendi favorisini ekleyebilir" on favorites
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "kullanici kendi favorisini silebilir" on favorites;
+create policy "kullanici kendi favorisini silebilir" on favorites
+  for delete using (auth.uid() = user_id);
 
 -- Eski tek-etkinlikli tablolar (seats, sales) artik kullanilmiyor.
 -- Gercek verin varsa once ona gore yeni bir etkinlik olustur, sonra

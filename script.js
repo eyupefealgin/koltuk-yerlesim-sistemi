@@ -339,6 +339,14 @@ const eventNoteInput = document.getElementById('eventNoteInput');
 const saveNoteBtn = document.getElementById('saveNoteBtn');
 const eventNoteDisplay = document.getElementById('eventNoteDisplay');
 
+// Etkinlik başına ödeme yöntemi seçimi (Kart/Nakit) — bkz. paymentChoiceButtons
+const paymentMethodKartCheckbox = document.getElementById('paymentMethodKart');
+const paymentMethodNakitCheckbox = document.getElementById('paymentMethodNakit');
+const savePaymentMethodsBtn = document.getElementById('savePaymentMethodsBtn');
+const newEventPaymentRow = document.getElementById('newEventPaymentRow');
+const newEventPaymentKart = document.getElementById('newEventPaymentKart');
+const newEventPaymentNakit = document.getElementById('newEventPaymentNakit');
+
 // Genel Etkinlik: tek ücretsiz giriş havuzunun kapasitesi + bilet türü/
 // fiyat (tierPanelSection) ve indirim kodu (discountPanelSection) panelleri
 // — ikisi de fiyatlı bilet varsayar, Genel Etkinlik'te anlamsız (bkz.
@@ -437,6 +445,7 @@ let holdCountdownInterval = null;
 let holdExpiresAt = null;
 let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
 let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.discount_codes)
+let PAYMENT_METHODS = ['kart', 'nakit']; // geçerli etkinliğin kabul ettiği ödeme yöntemleri (events.payment_methods)
 let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
 let EVENT_NOTE = null;         // geçerli etkinliğin notu (events.note) — herkese açık
 const DEFAULT_DYNAMIC = { enabled: false, threshold: 80, increase: 10 };
@@ -1575,6 +1584,44 @@ saveNoteBtn.addEventListener('click', async () => {
   EVENT_NOTE = note;
   renderNoteEditor();
   toast(note ? 'Not kaydedildi.' : 'Not kaldırıldı.');
+});
+
+// Etkinlik başına ödeme yöntemi seçimi — misafirin satın alma ekranındaki
+// Kart/Nakit butonlarından sadece burada seçili olanlar çıkar (bkz.
+// paymentChoiceButtons, modal-payment-panel'de sabit HTML olarak duruyor,
+// biz sadece görünürlüğünü PAYMENT_METHODS'a göre açıp kapatıyoruz).
+function applyPaymentMethodsVisibility(){
+  paymentChoiceButtons.forEach(btn => {
+    btn.hidden = !PAYMENT_METHODS.includes(btn.dataset.payment);
+  });
+}
+
+function renderPaymentMethodsEditor(){
+  paymentMethodKartCheckbox.checked = PAYMENT_METHODS.includes('kart');
+  paymentMethodNakitCheckbox.checked = PAYMENT_METHODS.includes('nakit');
+  applyPaymentMethodsVisibility();
+}
+
+savePaymentMethodsBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const methods = [];
+  if(paymentMethodKartCheckbox.checked) methods.push('kart');
+  if(paymentMethodNakitCheckbox.checked) methods.push('nakit');
+  if(!methods.length){
+    toast('En az bir ödeme yöntemi seçili olmalı.');
+    return;
+  }
+
+  savePaymentMethodsBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    payment_methods: methods, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  savePaymentMethodsBtn.disabled = false;
+
+  if(error){ toast('Ödeme yöntemleri kaydedilemedi.'); return; }
+  PAYMENT_METHODS = methods;
+  applyPaymentMethodsVisibility();
+  toast('Ödeme yöntemleri kaydedildi.');
 });
 
 // ===== Dinamik fiyatlandırma (etkinlik başına, sadece Yönetici) =====
@@ -2916,6 +2963,8 @@ myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.
 // tıklanana kadar). Sadece misafir sayfasında (index.html) var; emailLoginBtn
 // diğer sayfalarda null olduğu için hepsi ?. ile erişiliyor.
 let verifiedEmail = null;
+let verifiedUserId = null;    // favorites tablosunun user_id'si için (bkz. loadFavorites/toggleFavorite)
+let favoriteEventIds = new Set();
 const topbarLogoutBtn = document.getElementById('topbarLogoutBtn');
 
 // Üst çubukta "Biletlerim"in yanında ayrı bir "Çıkış" butonu -- modalı
@@ -2931,8 +2980,12 @@ updateEmailLoginBtnLabel();
 async function performEmailLogout(){
   if(supabaseClient) await supabaseClient.auth.signOut();
   verifiedEmail = null;
+  verifiedUserId = null;
+  favoriteEventIds = new Set();
   updateEmailLoginBtnLabel();
   closeEmailLoginModal();
+  if(eventViewMode === 'favorites') setEventViewMode('upcoming');
+  else renderEventList();
   toast('Çıkış yapıldı.');
 }
 topbarLogoutBtn?.addEventListener('click', performEmailLogout);
@@ -2946,7 +2999,9 @@ topbarLogoutBtn?.addEventListener('click', performEmailLogout);
     const { data } = await supabaseClient.auth.getSession();
     if(data.session?.user?.email){
       verifiedEmail = data.session.user.email;
+      verifiedUserId = data.session.user.id;
       updateEmailLoginBtnLabel();
+      loadFavorites();
     }
   } catch { /* yoksay */ }
 })();
@@ -3118,7 +3173,9 @@ emailLoginSendBtn?.addEventListener('click', async () => {
     }
 
     verifiedEmail = data.user?.email || email;
+    verifiedUserId = data.user?.id || null;
     updateEmailLoginBtnLabel();
+    loadFavorites();
     if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
     if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
     emailLoginPasswordInput.value = '';
@@ -3211,7 +3268,9 @@ supabaseClient?.auth.onAuthStateChange((event, session) => {
   // verifiedEmail'e yazılırdı.
   if(event === 'SIGNED_IN' && emailLoginOverlay && !authSelfInitiated && session?.user?.email){
     verifiedEmail = session.user.email;
+    verifiedUserId = session.user.id;
     updateEmailLoginBtnLabel();
+    loadFavorites();
     toast(`E-posta onaylandı — ${verifiedEmail} olarak giriş yaptın.`);
   }
 });
@@ -3236,7 +3295,9 @@ resetConfirmBtn?.addEventListener('click', async () => {
     if(error) throw error;
 
     verifiedEmail = data.user?.email || verifiedEmail;
+    verifiedUserId = data.user?.id || verifiedUserId;
     updateEmailLoginBtnLabel();
+    loadFavorites();
     if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
     if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
     resetPasswordInput.value = '';
@@ -3510,6 +3571,7 @@ function applySeatsPayload(row){
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   POSTER_URL = safeImageUrl(row.poster_url);
   EVENT_NOTE = typeof row.note === 'string' && row.note.trim() ? row.note : null;
+  PAYMENT_METHODS = Array.isArray(row.payment_methods) && row.payment_methods.length ? row.payment_methods : ['kart', 'nakit'];
   GENERAL_CAPACITY = Number(row.general_capacity) > 0 ? Number(row.general_capacity) : DEFAULT_GENERAL_CAPACITY;
   // İsmi buradan da yazıyoruz: paylaşılan bir linkle doğrudan girildiğinde
   // etkinlik listesi henüz yüklenmemiş oluyor ve başlık boş kalıyordu.
@@ -3530,6 +3592,7 @@ function applySeatsPayload(row){
   renderDiscountList();
   renderPosterEditor();
   renderNoteEditor();
+  renderPaymentMethodsEditor();
   renderDynamicPricingEditor();
 
   isApplyingRemote = false;
@@ -3651,7 +3714,89 @@ function computeMinTierPrice(ev){
 
 // Etkinlik listesindeki filtre çubuğu — tamamen istemci tarafında, zaten
 // belleğe çekilmiş `events` dizisini süzer (yeni bir sorgu atmaz).
+// Bugünün tarihi, event_date (YYYY-MM-DD) ile doğrudan string karşılaştırma
+// yapılabilecek biçimde — saat dilimi kaymasına karşı yerel tarihten kuruluyor.
+function todayDateStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function isPastEvent(ev){
+  return !!ev.event_date && ev.event_date < todayDateStr();
+}
+
+// Etkinlik listesi görünüm sekmesi — Yaklaşan (varsayılan) / Geçmiş /
+// Favorilerim. Sadece misafir sayfasında (index.html) sekmeleri var;
+// personel sayfalarında elemanlar null olduğu için hepsi ?. ile erişiliyor,
+// eventViewMode her zaman 'upcoming' kalır (personel her şeyi görür).
+let eventViewMode = 'upcoming';
+const eventViewUpcomingBtn = document.getElementById('eventViewUpcoming');
+const eventViewPastBtn = document.getElementById('eventViewPast');
+const eventViewFavoritesBtn = document.getElementById('eventViewFavorites');
+
+function setEventViewMode(mode){
+  if(mode === 'favorites' && !requireGuestLogin()) return;
+  eventViewMode = mode;
+  eventViewUpcomingBtn?.classList.toggle('is-active', mode === 'upcoming');
+  eventViewPastBtn?.classList.toggle('is-active', mode === 'past');
+  eventViewFavoritesBtn?.classList.toggle('is-active', mode === 'favorites');
+  renderEventList();
+}
+eventViewUpcomingBtn?.addEventListener('click', () => setEventViewMode('upcoming'));
+eventViewPastBtn?.addEventListener('click', () => setEventViewMode('past'));
+eventViewFavoritesBtn?.addEventListener('click', () => setEventViewMode('favorites'));
+
+// ===== Favoriler (sadece giriş yapmış misafirler, bkz. favorites tablosu) =====
+async function loadFavorites(){
+  if(!supabaseClient || !verifiedUserId){ favoriteEventIds = new Set(); return; }
+  try {
+    // RLS zaten sadece auth.uid() = user_id olan satırları döndürüyor --
+    // burada ayrıca .eq('user_id', ...) filtrelemeye gerek yok.
+    const { data, error } = await supabaseClient.from('favorites').select('event_id');
+    if(error) throw error;
+    favoriteEventIds = new Set((data || []).map(r => r.event_id));
+  } catch(err){
+    console.warn('Favoriler alınamadı.', err);
+    favoriteEventIds = new Set();
+  }
+  renderEventList();
+}
+
+async function toggleFavorite(eventId, starBtn){
+  if(!requireGuestLogin()) return;
+  const isFav = favoriteEventIds.has(eventId);
+  starBtn.disabled = true;
+  try {
+    if(isFav){
+      const { error } = await supabaseClient.from('favorites').delete().eq('event_id', eventId);
+      if(error) throw error;
+      favoriteEventIds.delete(eventId);
+    } else {
+      const { error } = await supabaseClient.from('favorites').insert({ user_id: verifiedUserId, event_id: eventId });
+      if(error) throw error;
+      favoriteEventIds.add(eventId);
+    }
+    starBtn.classList.toggle('is-favorite', !isFav);
+    starBtn.setAttribute('aria-label', !isFav ? 'Favorilerden çıkar' : 'Favorilere ekle');
+    if(eventViewMode === 'favorites') renderEventList();
+  } catch(err){
+    console.warn('Favori güncellenemedi.', err);
+    toast('Favori güncellenemedi — buluta bağlanılamadı.');
+  } finally {
+    starBtn.disabled = false;
+  }
+}
+
 function eventMatchesFilters(ev){
+  if(eventViewMode === 'favorites') return favoriteEventIds.has(ev.id);
+  if(eventViewMode === 'past'){
+    if(ev.status !== 'active' || !isPastEvent(ev)) return false;
+  } else {
+    // 'upcoming': tarihi geçmiş AKTİF etkinlikler ana listeden çıkıyor --
+    // tarihsiz veya gelecekteki etkinlikler ile arşivlenmiş etkinlikler
+    // (mevcut soluk gösterim davranışı) burada kalıyor.
+    if(ev.status === 'active' && isPastEvent(ev)) return false;
+  }
+
   // Türkçe'ye özgü küçültme ('İ' → 'i', 'I' → 'ı') — normal toLowerCase
   // "İSTANBUL" yazan bir kullanıcıyı "istanbul" ile eşleştiremezdi.
   const q = eventFilterName.value.trim().toLocaleLowerCase('tr');
@@ -3733,6 +3878,7 @@ function renderEventList(){
       <div class="program-date"><div class="day"></div><div class="mon"></div></div>
       <div class="program-info">
         <div class="program-info-top">
+          <button class="favorite-star" type="button" aria-label="Favorilere ekle">★</button>
           <span class="program-venue"></span>
           <span class="program-status-badge"></span>
         </div>
@@ -3786,6 +3932,21 @@ function renderEventList(){
     row.querySelector('.event-enter-btn').addEventListener('click', () => enterEvent(ev.id, ev.name));
     row.querySelector('.event-archive-btn').addEventListener('click', () => toggleArchiveEvent(ev));
     row.querySelector('.event-delete-btn').addEventListener('click', () => deleteEventRow(ev));
+
+    // Favori yıldızı sadece misafir sayfasında (index.html) — personel
+    // sayfalarında elemanı gizliyoruz, tıklaması hiç bağlanmıyor.
+    const starBtn = row.querySelector('.favorite-star');
+    if(document.body.dataset.page === 'public'){
+      const isFav = favoriteEventIds.has(ev.id);
+      starBtn.classList.toggle('is-favorite', isFav);
+      starBtn.setAttribute('aria-label', isFav ? 'Favorilerden çıkar' : 'Favorilere ekle');
+      starBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFavorite(ev.id, starBtn);
+      });
+    } else {
+      starBtn.hidden = true;
+    }
 
     eventGridEl.appendChild(row);
   });
@@ -3861,6 +4022,9 @@ function toggleNewEventDimsVisibility(){
   const isGenel = vType === 'genel';
   newEventDimsRow.hidden = isFutbol || isGenel;
   newEventStadiumNote.hidden = !(isFutbol || isGenel);
+  // Genel Etkinlik'te bilet türü/ödeme adımı hiç yok (bkz. joinGeneralEvent)
+  // — ödeme yöntemi seçimi de anlamsız, gizleniyor.
+  newEventPaymentRow.hidden = isGenel;
   if(isFutbol){
     newEventStadiumNote.textContent = `Futbol Sahası için sabit ${STADIUM_BLOCKS.length} bloklu stadyum düzeni kullanılır.`;
   } else if(isGenel){
@@ -3875,6 +4039,8 @@ function openCreateEventModal(){
   newEventVenue.value = 'sinema';
   newEventCols.value = 10;
   newEventRows.value = 8;
+  newEventPaymentKart.checked = true;
+  newEventPaymentNakit.checked = true;
   toggleNewEventDimsVisibility();
   createEventOverlay.hidden = false;
   newEventName.focus();
@@ -3892,6 +4058,16 @@ async function createEvent(){
   }
   const date = newEventDate.value || null;
   const vType = newEventVenue.value;
+
+  // Genel Etkinlik'te odeme adimi yok, secimi de yok sayiliyor — diger
+  // turlerde en az bir yontem secili olmali.
+  const evPaymentMethods = [];
+  if(newEventPaymentKart.checked) evPaymentMethods.push('kart');
+  if(newEventPaymentNakit.checked) evPaymentMethods.push('nakit');
+  if(vType !== 'genel' && !evPaymentMethods.length){
+    toast('En az bir ödeme yöntemi seçili olmalı.');
+    return;
+  }
 
   // general_capacity sütunu "not null" — diğer venue türlerinde hiç
   // okunmuyor ama insert'e AÇIKÇA null geçmek Postgres'te varsayılan
@@ -3927,6 +4103,7 @@ async function createEvent(){
       cols: evCols, rows: evRows, seat_states: encodeSeatStates(states),
       tiers: evTiers, general_capacity: evGeneralCapacity,
       poster_url: safeImageUrl(newEventPoster.value), status: 'active',
+      payment_methods: evPaymentMethods.length ? evPaymentMethods : ['kart', 'nakit'],
     }).select().single();
     if(error) throw error;
 
@@ -4020,6 +4197,7 @@ async function enterEvent(id, nameHint, skipUrl){
   DISCOUNT_CODES = [];
   POSTER_URL = null;
   EVENT_NOTE = null;
+  PAYMENT_METHODS = ['kart', 'nakit'];
   eventNoteDisplay.hidden = true;
   GENERAL_CAPACITY = DEFAULT_GENERAL_CAPACITY;
   DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC };

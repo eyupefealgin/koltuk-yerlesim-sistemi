@@ -94,6 +94,11 @@
       <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
     </div>
   </div>
+  <div class="event-view-tabs">
+    <button class="mode-chip is-active" id="eventViewUpcoming" type="button">Yaklaşan</button>
+    <button class="mode-chip" id="eventViewPast" type="button">Geçmiş</button>
+    <button class="mode-chip" id="eventViewFavorites" type="button">★ Favorilerim</button>
+  </div>
   <div class="event-filter-bar">
     <input type="text" id="eventFilterName" class="event-filter-name" maxlength="60" placeholder="Etkinlik ara...">
     <select id="eventFilterVenue">
@@ -206,6 +211,15 @@
       <div class="poster-row">
         <input type="text" id="eventNoteInput" maxlength="300" placeholder="Misafirlere gösterilecek not (ör. Kapılar 19:00'da açılır) — boş bırakılabilir">
         <button class="btn btn-primary btn-sm" id="saveNoteBtn" type="button">Kaydet</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
+      <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
+      <div class="payment-method-row">
+        <label class="dynamic-toggle"><input type="checkbox" id="paymentMethodKart"><span>Kart</span></label>
+        <label class="dynamic-toggle"><input type="checkbox" id="paymentMethodNakit"><span>Nakit</span></label>
+        <button class="btn btn-primary btn-sm" id="savePaymentMethodsBtn" type="button">Kaydet</button>
       </div>
     </div>
 
@@ -426,6 +440,11 @@
         </label>
       </div>
       <p class="stadium-note" id="newEventStadiumNote" hidden>Futbol Sahası için sabit 44 bloklu stadyum düzeni kullanılır.</p>
+      <div class="payment-method-row" id="newEventPaymentRow">
+        <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
+        <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentKart" checked><span>Kart</span></label>
+        <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentNakit" checked><span>Nakit</span></label>
+      </div>
       <button class="btn btn-primary" id="submitCreateEventBtn" type="button">Etkinliği Oluştur</button>
     </div>
   </div>
