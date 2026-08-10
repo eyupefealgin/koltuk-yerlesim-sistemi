@@ -382,17 +382,15 @@ const myTicketCodeInput = document.getElementById('myTicketCodeInput');
 const myTicketFindBtn = document.getElementById('myTicketFindBtn');
 const myTicketResultEl = document.getElementById('myTicketResult');
 
-// E-posta ile giriş — gerçek Supabase Auth OTP (signInWithOtp/verifyOtp),
+// E-posta+şifre ile giriş — gerçek Supabase Auth (signUp/signInWithPassword),
 // bkz. index.html notu. Sadece misafir sayfasında (index.html) var,
 // satis.html/yonetici.html'de yok — bu yüzden hepsi ?. ile erişiliyor.
 const emailLoginBtn = document.getElementById('emailLoginBtn');
 const emailLoginOverlay = document.getElementById('emailLoginOverlay');
 const emailLoginClose = document.getElementById('emailLoginClose');
 const emailLoginEmailInput = document.getElementById('emailLoginEmailInput');
+const emailLoginPasswordInput = document.getElementById('emailLoginPasswordInput');
 const emailLoginSendBtn = document.getElementById('emailLoginSendBtn');
-const emailLoginCodeNote = document.getElementById('emailLoginCodeNote');
-const emailLoginCodeInput = document.getElementById('emailLoginCodeInput');
-const emailLoginVerifyBtn = document.getElementById('emailLoginVerifyBtn');
 const emailLoginErrorEl = document.getElementById('emailLoginError');
 const myEmailTicketsNote = document.getElementById('myEmailTicketsNote');
 const myEmailTicketsList = document.getElementById('myEmailTicketsList');
@@ -2895,11 +2893,11 @@ myTicketOverlay.addEventListener('click', (e) => { if(e.target === myTicketOverl
 myTicketFindBtn.addEventListener('click', findMyTicket);
 myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); findMyTicket(); } });
 
-// ===== E-posta ile giriş (GERÇEK Supabase Auth OTP) + "Biletlerim" =====
-// Kod client'ta ÜRETİLMİYOR — signInWithOtp() Supabase'in kendi sunucusundan
-// gerçek bir e-posta gönderiyor, verifyOtp() o kodu sunucuda doğruluyor.
-// Sadece misafir sayfasında (index.html) var; emailLoginBtn diğer
-// sayfalarda null olduğu için hepsi ?. ile erişiliyor.
+// ===== E-posta+şifre ile giriş/kayıt (GERÇEK Supabase Auth) + "Biletlerim" =====
+// signUp()/signInWithPassword() — e-posta onay maili YOK (Supabase panelinde
+// "Confirm email" kapalı, bkz. README), o yüzden ikisi de anında aktif bir
+// oturum döndürüyor. Sadece misafir sayfasında (index.html) var; emailLoginBtn
+// diğer sayfalarda null olduğu için hepsi ?. ile erişiliyor.
 let verifiedEmail = null;
 
 function updateEmailLoginBtnLabel(){
@@ -2928,11 +2926,10 @@ function showEmailPanel(name){
   });
 }
 
-// "Giriş Yap" / "Kayıt Ol" sekmeleri — normal sitelerdeki gibi görünsün diye
-// eklendi, ama Supabase Auth OTP zaten şifresiz: signInWithOtp() e-posta
-// önceden var mı yok mu diye ayrım YAPMADAN aynı kodu gönderiyor (yeni
-// kullanıcıyı otomatik oluşturuyor). Bu yüzden iki sekme de AYNI
-// emailLoginSendBtn akışına gidiyor — sadece başlık/açıklama metni değişiyor.
+// "Giriş Yap" / "Kayıt Ol" sekmeleri — gerçek Supabase Auth e-posta+şifre
+// (signInWithPassword/signUp), normal sitelerdeki gibi iki ayrı işlem.
+// Panel/alanlar aynı, sadece hangi Supabase çağrısının yapılacağını ve
+// buton/metin diline hangisinin kullanılacağını authTabMode belirliyor.
 let authTabMode = 'login';
 const authTabLoginBtn = document.getElementById('authTabLogin');
 const authTabSignupBtn = document.getElementById('authTabSignup');
@@ -2947,9 +2944,12 @@ function setAuthTab(mode){
   if(emailLoginTitleEl) emailLoginTitleEl.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
   if(emailLoginNoteEl){
     emailLoginNoteEl.textContent = mode === 'signup'
-      ? 'Hesap oluşturmak için e-postanı gir, sana bir doğrulama kodu gönderelim.'
-      : 'E-posta adresini gir, sana bir doğrulama kodu gönderelim.';
+      ? 'Hesap oluşturmak için e-posta ve bir şifre belirle.'
+      : 'E-posta ve şifreni gir.';
   }
+  if(emailLoginSendBtn) emailLoginSendBtn.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
+  if(emailLoginPasswordInput) emailLoginPasswordInput.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+  if(emailLoginErrorEl) emailLoginErrorEl.hidden = true;
 }
 authTabLoginBtn?.addEventListener('click', () => setAuthTab('login'));
 authTabSignupBtn?.addEventListener('click', () => setAuthTab('signup'));
@@ -2966,6 +2966,7 @@ function openEmailLoginModal(){
   } else {
     setAuthTab('login');
     emailLoginEmailInput.value = '';
+    emailLoginPasswordInput.value = '';
     showEmailPanel('email');
     emailLoginEmailInput.focus();
   }
@@ -3023,57 +3024,62 @@ emailLoginBtn?.addEventListener('click', openEmailLoginModal);
 emailLoginClose?.addEventListener('click', closeEmailLoginModal);
 emailLoginOverlay?.addEventListener('click', (e) => { if(e.target === emailLoginOverlay) closeEmailLoginModal(); });
 
+// Şifreli giriş/kayıt — e-posta onay maili YOK (Supabase panelinde "Confirm
+// email" kapalı olmalı, bkz. README) — signUp()/signInWithPassword() ikisi
+// de aynı anda aktif bir oturum döndürüyor, ekstra bir mail/kod adımı yok.
 emailLoginSendBtn?.addEventListener('click', async () => {
   const email = emailLoginEmailInput.value.trim();
+  const password = emailLoginPasswordInput.value;
   if(!email || !email.includes('@')){
     toast('Geçerli bir e-posta adresi gir.');
     return;
   }
+  if(!password){
+    toast('Bir şifre gir.');
+    return;
+  }
   if(!supabaseClient) return;
+
+  emailLoginErrorEl.hidden = true;
   emailLoginSendBtn.disabled = true;
   try {
-    const { error } = await supabaseClient.auth.signInWithOtp({ email });
+    const { data, error } = authTabMode === 'signup'
+      ? await supabaseClient.auth.signUp({ email, password })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
     if(error) throw error;
-    emailLoginCodeNote.textContent = `${email} adresine bir kod gönderdik — gelen kutunu (spam dahil) kontrol et.`;
-    emailLoginCodeInput.value = '';
-    emailLoginErrorEl.hidden = true;
-    showEmailPanel('code');
-    emailLoginCodeInput.focus();
+
+    // Supabase, e-posta zaten kayıtlıysa signUp()'ta bazen açık bir hata
+    // yerine "başarılı" gibi görünen ama identities'i boş bir kullanıcı
+    // döndürür (e-posta numaralandırma saldırılarına karşı) — bunu ayrıca
+    // yakalamak gerekiyor.
+    if(authTabMode === 'signup' && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
+      emailLoginErrorEl.textContent = 'Bu e-posta zaten kayıtlı — Giriş Yap sekmesini dene.';
+      emailLoginErrorEl.hidden = false;
+      return;
+    }
+
+    verifiedEmail = data.user?.email || email;
+    updateEmailLoginBtnLabel();
+    if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
+    if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
+    emailLoginPasswordInput.value = '';
+    showEmailPanel('tickets');
+    loadMyEmailTickets();
+    toast(authTabMode === 'signup' ? 'Hesap oluşturuldu.' : 'Giriş yapıldı.');
   } catch(err){
-    console.warn('Kod gönderilemedi.', err);
-    toast('Kod gönderilemedi — buluta bağlanılamadı.');
+    console.warn('Giriş/kayıt başarısız.', err);
+    emailLoginErrorEl.textContent = /already registered|user_already_exists/i.test(err.message || err.code || '')
+      ? 'Bu e-posta zaten kayıtlı — Giriş Yap sekmesini dene.'
+      : /invalid login|invalid_credentials/i.test(err.message || err.code || '')
+        ? 'E-posta veya şifre hatalı.'
+        : err.message || 'İşlem başarısız — buluta bağlanılamadı.';
+    emailLoginErrorEl.hidden = false;
   } finally {
     emailLoginSendBtn.disabled = false;
   }
 });
 emailLoginEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
-
-emailLoginVerifyBtn?.addEventListener('click', async () => {
-  const code = emailLoginCodeInput.value.trim();
-  const email = emailLoginEmailInput.value.trim();
-  if(!code || !supabaseClient) return;
-
-  emailLoginVerifyBtn.disabled = true;
-  try {
-    const { data, error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
-    if(error) throw error;
-
-    emailLoginErrorEl.hidden = true;
-    verifiedEmail = data.user?.email || email;
-    updateEmailLoginBtnLabel();
-    if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
-    if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
-    showEmailPanel('tickets');
-    loadMyEmailTickets();
-    toast('Giriş yapıldı.');
-  } catch(err){
-    console.warn('Kod doğrulanamadı.', err);
-    emailLoginErrorEl.hidden = false;
-  } finally {
-    emailLoginVerifyBtn.disabled = false;
-  }
-});
-emailLoginCodeInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginVerifyBtn.click(); } });
+emailLoginPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
 
 emailLogoutBtn?.addEventListener('click', async () => {
   if(supabaseClient) await supabaseClient.auth.signOut();
