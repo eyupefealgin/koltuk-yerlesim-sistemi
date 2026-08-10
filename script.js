@@ -392,6 +392,16 @@ const emailLoginEmailInput = document.getElementById('emailLoginEmailInput');
 const emailLoginPasswordInput = document.getElementById('emailLoginPasswordInput');
 const emailLoginSendBtn = document.getElementById('emailLoginSendBtn');
 const emailLoginErrorEl = document.getElementById('emailLoginError');
+const emailLoginInfoNote = document.getElementById('emailLoginInfoNote');
+const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+const forgotEmailInput = document.getElementById('forgotEmailInput');
+const forgotSendBtn = document.getElementById('forgotSendBtn');
+const forgotBackBtn = document.getElementById('forgotBackBtn');
+const forgotErrorEl = document.getElementById('forgotErrorEl');
+const forgotInfoNote = document.getElementById('forgotInfoNote');
+const resetPasswordInput = document.getElementById('resetPasswordInput');
+const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+const resetErrorEl = document.getElementById('resetErrorEl');
 const myEmailTicketsNote = document.getElementById('myEmailTicketsNote');
 const myEmailTicketsList = document.getElementById('myEmailTicketsList');
 const emailLogoutBtn = document.getElementById('emailLogoutBtn');
@@ -2949,7 +2959,9 @@ function setAuthTab(mode){
   }
   if(emailLoginSendBtn) emailLoginSendBtn.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
   if(emailLoginPasswordInput) emailLoginPasswordInput.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+  if(forgotPasswordBtn) forgotPasswordBtn.hidden = mode === 'signup';
   if(emailLoginErrorEl) emailLoginErrorEl.hidden = true;
+  if(emailLoginInfoNote) emailLoginInfoNote.hidden = true;
 }
 authTabLoginBtn?.addEventListener('click', () => setAuthTab('login'));
 authTabSignupBtn?.addEventListener('click', () => setAuthTab('signup'));
@@ -3024,9 +3036,11 @@ emailLoginBtn?.addEventListener('click', openEmailLoginModal);
 emailLoginClose?.addEventListener('click', closeEmailLoginModal);
 emailLoginOverlay?.addEventListener('click', (e) => { if(e.target === emailLoginOverlay) closeEmailLoginModal(); });
 
-// Şifreli giriş/kayıt — e-posta onay maili YOK (Supabase panelinde "Confirm
-// email" kapalı olmalı, bkz. README) — signUp()/signInWithPassword() ikisi
-// de aynı anda aktif bir oturum döndürüyor, ekstra bir mail/kod adımı yok.
+// Şifreli giriş/kayıt — Supabase panelinde "Confirm email" AÇIK (hoca
+// istedi): signUp() bir onay maili gönderir ve data.session null döner —
+// hesap gerçek anlamda aktif olmuyor, kullanıcı e-postasındaki linke
+// tıklayana kadar. O link tıklandığında Supabase kendi kendine session'ı
+// URL'den okuyup kuruyor (bkz. sayfa yüklenişindeki getSession() kontrolü).
 emailLoginSendBtn?.addEventListener('click', async () => {
   const email = emailLoginEmailInput.value.trim();
   const password = emailLoginPasswordInput.value;
@@ -3041,6 +3055,7 @@ emailLoginSendBtn?.addEventListener('click', async () => {
   if(!supabaseClient) return;
 
   emailLoginErrorEl.hidden = true;
+  emailLoginInfoNote.hidden = true;
   emailLoginSendBtn.disabled = true;
   try {
     const { data, error } = authTabMode === 'signup'
@@ -3058,6 +3073,15 @@ emailLoginSendBtn?.addEventListener('click', async () => {
       return;
     }
 
+    // signUp() sonrası data.session null ise onay bekleniyor demektir —
+    // henüz "giriş yapılmış" sayılmıyoruz, aynı panelde kalıp bilgi veriyoruz.
+    if(authTabMode === 'signup' && !data.session){
+      emailLoginInfoNote.textContent = `✓ ${email} adresine bir onay linki gönderdik — gelen kutunu (spam dahil) kontrol et ve linke tıkla.`;
+      emailLoginInfoNote.hidden = false;
+      emailLoginPasswordInput.value = '';
+      return;
+    }
+
     verifiedEmail = data.user?.email || email;
     updateEmailLoginBtnLabel();
     if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
@@ -3068,11 +3092,14 @@ emailLoginSendBtn?.addEventListener('click', async () => {
     toast(authTabMode === 'signup' ? 'Hesap oluşturuldu.' : 'Giriş yapıldı.');
   } catch(err){
     console.warn('Giriş/kayıt başarısız.', err);
-    emailLoginErrorEl.textContent = /already registered|user_already_exists/i.test(err.message || err.code || '')
+    const msg = err.message || err.code || '';
+    emailLoginErrorEl.textContent = /already registered|user_already_exists/i.test(msg)
       ? 'Bu e-posta zaten kayıtlı — Giriş Yap sekmesini dene.'
-      : /invalid login|invalid_credentials/i.test(err.message || err.code || '')
+      : /invalid login|invalid_credentials/i.test(msg)
         ? 'E-posta veya şifre hatalı.'
-        : err.message || 'İşlem başarısız — buluta bağlanılamadı.';
+        : /email not confirmed|email_not_confirmed/i.test(msg)
+          ? 'Bu hesabı henüz onaylamadın — e-postana gönderdiğimiz onay linkine tıkla.'
+          : err.message || 'İşlem başarısız — buluta bağlanılamadı.';
     emailLoginErrorEl.hidden = false;
   } finally {
     emailLoginSendBtn.disabled = false;
@@ -3080,6 +3107,88 @@ emailLoginSendBtn?.addEventListener('click', async () => {
 });
 emailLoginEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
 emailLoginPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
+
+// ===== Şifremi unuttum =====
+forgotPasswordBtn?.addEventListener('click', () => {
+  emailLoginErrorEl.hidden = true;
+  emailLoginInfoNote.hidden = true;
+  forgotErrorEl.hidden = true;
+  forgotInfoNote.hidden = true;
+  forgotEmailInput.value = emailLoginEmailInput.value.trim();
+  showEmailPanel('forgot');
+  forgotEmailInput.focus();
+});
+forgotBackBtn?.addEventListener('click', () => { setAuthTab('login'); showEmailPanel('email'); });
+
+forgotSendBtn?.addEventListener('click', async () => {
+  const email = forgotEmailInput.value.trim();
+  if(!email || !email.includes('@')){
+    toast('Geçerli bir e-posta adresi gir.');
+    return;
+  }
+  if(!supabaseClient) return;
+
+  forgotErrorEl.hidden = true;
+  forgotSendBtn.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+    if(error) throw error;
+    forgotInfoNote.textContent = `✓ ${email} adresine bir sıfırlama linki gönderdik — gelen kutunu (spam dahil) kontrol et.`;
+    forgotInfoNote.hidden = false;
+  } catch(err){
+    console.warn('Sıfırlama linki gönderilemedi.', err);
+    forgotErrorEl.textContent = 'Gönderilemedi — buluta bağlanılamadı.';
+    forgotErrorEl.hidden = false;
+  } finally {
+    forgotSendBtn.disabled = false;
+  }
+});
+forgotEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); forgotSendBtn.click(); } });
+
+// Sıfırlama linkine tıklayınca Supabase bizi PASSWORD_RECOVERY olayıyla
+// geri gönderiyor — modalı açıp doğrudan "yeni şifre belirle" panelini
+// gösteriyoruz (kullanıcı ayrıca giriş yapmasına gerek yok, link zaten
+// geçici bir oturum kuruyor).
+supabaseClient?.auth.onAuthStateChange((event) => {
+  if(event === 'PASSWORD_RECOVERY'){
+    if(emailLoginOverlay) emailLoginOverlay.hidden = false;
+    resetErrorEl.hidden = true;
+    resetPasswordInput.value = '';
+    showEmailPanel('reset');
+  }
+});
+
+resetConfirmBtn?.addEventListener('click', async () => {
+  const password = resetPasswordInput.value;
+  if(!password){
+    toast('Bir şifre gir.');
+    return;
+  }
+  if(!supabaseClient) return;
+
+  resetErrorEl.hidden = true;
+  resetConfirmBtn.disabled = true;
+  try {
+    const { data, error } = await supabaseClient.auth.updateUser({ password });
+    if(error) throw error;
+
+    verifiedEmail = data.user?.email || verifiedEmail;
+    updateEmailLoginBtnLabel();
+    if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
+    if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
+    resetPasswordInput.value = '';
+    showEmailPanel('tickets');
+    loadMyEmailTickets();
+    toast('Şifre güncellendi.');
+  } catch(err){
+    console.warn('Şifre güncellenemedi.', err);
+    resetErrorEl.textContent = err.message || 'Şifre güncellenemedi — buluta bağlanılamadı.';
+    resetErrorEl.hidden = false;
+  } finally {
+    resetConfirmBtn.disabled = false;
+  }
+});
+resetPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); resetConfirmBtn.click(); } });
 
 emailLogoutBtn?.addEventListener('click', async () => {
   if(supabaseClient) await supabaseClient.auth.signOut();

@@ -534,7 +534,25 @@
       <input type="email" id="emailLoginEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta adresi" autocomplete="email">
       <input type="password" id="emailLoginPasswordInput" class="buyer-name-input" maxlength="72" placeholder="Şifre" autocomplete="current-password">
       <button class="btn btn-primary" id="emailLoginSendBtn" type="button">Giriş Yap</button>
+      <button class="link-btn" id="forgotPasswordBtn" type="button">Şifremi unuttum</button>
       <p class="login-error" id="emailLoginError" hidden></p>
+      <p class="login-info-note" id="emailLoginInfoNote" hidden></p>
+    </div>
+
+    <div class="email-step-panel" data-email-panel="forgot" hidden>
+      <p class="buyer-note">Şifreni sıfırlamak için e-postanı gir, sana bir sıfırlama linki gönderelim.</p>
+      <input type="email" id="forgotEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta adresi" autocomplete="email">
+      <button class="btn btn-primary" id="forgotSendBtn" type="button">Sıfırlama Linki Gönder</button>
+      <button class="link-btn" id="forgotBackBtn" type="button">← Girişe dön</button>
+      <p class="login-error" id="forgotErrorEl" hidden></p>
+      <p class="login-info-note" id="forgotInfoNote" hidden></p>
+    </div>
+
+    <div class="email-step-panel" data-email-panel="reset" hidden>
+      <p class="buyer-note">Hesabın için yeni bir şifre belirle.</p>
+      <input type="password" id="resetPasswordInput" class="buyer-name-input" maxlength="72" placeholder="Yeni şifre" autocomplete="new-password">
+      <button class="btn btn-primary" id="resetConfirmBtn" type="button">Şifreyi Güncelle</button>
+      <p class="login-error" id="resetErrorEl" hidden></p>
     </div>
 
     <div class="email-step-panel" data-email-panel="tickets" hidden>
