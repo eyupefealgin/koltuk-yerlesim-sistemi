@@ -2938,6 +2938,7 @@ const authTabLoginBtn = document.getElementById('authTabLogin');
 const authTabSignupBtn = document.getElementById('authTabSignup');
 const emailLoginNoteEl = document.getElementById('emailLoginNote');
 const emailLoginTitleEl = document.getElementById('emailLoginTitle');
+const loginSuccessNoteEl = document.getElementById('loginSuccessNote');
 
 function setAuthTab(mode){
   authTabMode = mode;
@@ -2958,6 +2959,8 @@ function openEmailLoginModal(){
   emailLoginErrorEl.hidden = true;
   emailLoginOverlay.hidden = false;
   if(verifiedEmail){
+    if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
+    if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
     showEmailPanel('tickets');
     loadMyEmailTickets();
   } else {
@@ -3058,6 +3061,8 @@ emailLoginVerifyBtn?.addEventListener('click', async () => {
     emailLoginErrorEl.hidden = true;
     verifiedEmail = data.user?.email || email;
     updateEmailLoginBtnLabel();
+    if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
+    if(loginSuccessNoteEl) loginSuccessNoteEl.textContent = `✓ ${verifiedEmail} olarak giriş yaptın.`;
     showEmailPanel('tickets');
     loadMyEmailTickets();
     toast('Giriş yapıldı.');

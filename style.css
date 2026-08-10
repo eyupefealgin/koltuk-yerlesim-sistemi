@@ -1472,6 +1472,20 @@ select option{
    akışına gidiyor (bkz. script.js setAuthTab), sadece metin/başlık farklı.
    .mode-chip'in var olan pil-buton görünümünü yeniden kullanıyor. */
 .auth-tabs{ display: flex; gap: 8px; margin-bottom: 18px; justify-content: center; }
+
+/* Kod doğrulandıktan sonra "girişin başarılı" net biçimde görünsün diye --
+   bir toast'a güvenmek yetmiyordu, kullanıcı kaçırabiliyordu. */
+.login-success-note{
+  font-size: .86rem;
+  font-weight: 600;
+  color: var(--success);
+  background: rgba(62, 207, 142, 0.1);
+  border: 1px solid rgba(62, 207, 142, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin: 0 0 16px;
+}
+.login-success-note[hidden], .login-success-note:empty{ display: none; }
 .hold-countdown{
   font-size: .78rem;
   font-weight: 600;
