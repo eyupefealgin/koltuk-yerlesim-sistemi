@@ -1814,7 +1814,7 @@ select option{
   .event-list-header-actions{ width: 100%; }
   .event-list-header-actions .btn{ flex: 1 1 auto; }
   .program-row{ gap: 12px; padding: 16px 4px; }
-  .program-poster{ display: none; }
+  .program-poster{ width: 44px; height: 44px; }
   .program-fill{ width: 100%; order: 5; }
   .program-actions{ width: 100%; order: 6; }
   .program-actions .btn{ flex: 1 1 auto; }
