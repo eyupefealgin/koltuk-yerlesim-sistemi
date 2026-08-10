@@ -2916,12 +2916,26 @@ myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.
 // tıklanana kadar). Sadece misafir sayfasında (index.html) var; emailLoginBtn
 // diğer sayfalarda null olduğu için hepsi ?. ile erişiliyor.
 let verifiedEmail = null;
+const topbarLogoutBtn = document.getElementById('topbarLogoutBtn');
 
+// Üst çubukta "Biletlerim"in yanında ayrı bir "Çıkış" butonu -- modalı
+// açmadan tek tıkla çıkış/hesap değiştirme için (bkz. emailLogoutBtn'in
+// modal içindeki eşleniği, aynı signOut() mantığını paylaşıyor).
 function updateEmailLoginBtnLabel(){
   if(!emailLoginBtn) return;
   emailLoginBtn.textContent = verifiedEmail ? 'Biletlerim' : 'Giriş Yap';
+  if(topbarLogoutBtn) topbarLogoutBtn.hidden = !verifiedEmail;
 }
 updateEmailLoginBtnLabel();
+
+async function performEmailLogout(){
+  if(supabaseClient) await supabaseClient.auth.signOut();
+  verifiedEmail = null;
+  updateEmailLoginBtnLabel();
+  closeEmailLoginModal();
+  toast('Çıkış yapıldı.');
+}
+topbarLogoutBtn?.addEventListener('click', performEmailLogout);
 
 // Sayfa açılışında zaten geçerli bir Supabase Auth oturumu varsa (önceki
 // ziyaretten kalma, tarayıcı kendi tutuyor) onu yükle — async olduğu için
@@ -3243,13 +3257,7 @@ resetConfirmBtn?.addEventListener('click', async () => {
 });
 resetPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); resetConfirmBtn.click(); } });
 
-emailLogoutBtn?.addEventListener('click', async () => {
-  if(supabaseClient) await supabaseClient.auth.signOut();
-  verifiedEmail = null;
-  updateEmailLoginBtnLabel();
-  closeEmailLoginModal();
-  toast('Çıkış yapıldı.');
-});
+emailLogoutBtn?.addEventListener('click', performEmailLogout);
 
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
