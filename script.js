@@ -2904,9 +2904,9 @@ myTicketFindBtn.addEventListener('click', findMyTicket);
 myTicketCodeInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); findMyTicket(); } });
 
 // ===== E-posta+şifre ile giriş/kayıt (GERÇEK Supabase Auth) + "Biletlerim" =====
-// signUp()/signInWithPassword() — e-posta onay maili YOK (Supabase panelinde
-// "Confirm email" kapalı, bkz. README), o yüzden ikisi de anında aktif bir
-// oturum döndürüyor. Sadece misafir sayfasında (index.html) var; emailLoginBtn
+// signUp()/signInWithPassword() — Supabase panelinde "Confirm email" AÇIK,
+// bu yüzden signUp() sonrası data.session null dönebilir (onay linki
+// tıklanana kadar). Sadece misafir sayfasında (index.html) var; emailLoginBtn
 // diğer sayfalarda null olduğu için hepsi ?. ile erişiliyor.
 let verifiedEmail = null;
 
@@ -2941,6 +2941,12 @@ function showEmailPanel(name){
 // Panel/alanlar aynı, sadece hangi Supabase çağrısının yapılacağını ve
 // buton/metin diline hangisinin kullanılacağını authTabMode belirliyor.
 let authTabMode = 'login';
+// signUp/signInWithPassword/updateUser çağrılarımız da Supabase'in kendi
+// onAuthStateChange('SIGNED_IN') olayını tetikliyor -- bu bayrak, o olayı
+// SADECE kullanıcı e-postasındaki onay linkine tıklayıp sayfaya kendiliğinden
+// geri döndüğünde (bizim tetiklemediğimiz bir giriş) ele almamızı sağlıyor,
+// aksi halde aynı "giriş yapıldı" bilgisi iki kez gösterilirdi.
+let authSelfInitiated = false;
 const authTabLoginBtn = document.getElementById('authTabLogin');
 const authTabSignupBtn = document.getElementById('authTabSignup');
 const emailLoginNoteEl = document.getElementById('emailLoginNote');
@@ -3052,11 +3058,19 @@ emailLoginSendBtn?.addEventListener('click', async () => {
     toast('Bir şifre gir.');
     return;
   }
+  // Supabase varsayılan minimum şifre uzunluğu 6 — client'ta önceden
+  // kontrol etmezsek Supabase'in İngilizce hatası ("Password should be at
+  // least 6 characters") kullanıcıya çıplak sızardı.
+  if(authTabMode === 'signup' && password.length < 6){
+    toast('Şifre en az 6 karakter olmalı.');
+    return;
+  }
   if(!supabaseClient) return;
 
   emailLoginErrorEl.hidden = true;
   emailLoginInfoNote.hidden = true;
   emailLoginSendBtn.disabled = true;
+  authSelfInitiated = true;
   try {
     const { data, error } = authTabMode === 'signup'
       ? await supabaseClient.auth.signUp({ email, password })
@@ -3099,10 +3113,13 @@ emailLoginSendBtn?.addEventListener('click', async () => {
         ? 'E-posta veya şifre hatalı.'
         : /email not confirmed|email_not_confirmed/i.test(msg)
           ? 'Bu hesabı henüz onaylamadın — e-postana gönderdiğimiz onay linkine tıkla.'
-          : err.message || 'İşlem başarısız — buluta bağlanılamadı.';
+          : /password should be at least|password.*6 char/i.test(msg)
+            ? 'Şifre en az 6 karakter olmalı.'
+            : err.message || 'İşlem başarısız — buluta bağlanılamadı.';
     emailLoginErrorEl.hidden = false;
   } finally {
     emailLoginSendBtn.disabled = false;
+    authSelfInitiated = false;
   }
 });
 emailLoginEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
@@ -3148,13 +3165,33 @@ forgotEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.
 // Sıfırlama linkine tıklayınca Supabase bizi PASSWORD_RECOVERY olayıyla
 // geri gönderiyor — modalı açıp doğrudan "yeni şifre belirle" panelini
 // gösteriyoruz (kullanıcı ayrıca giriş yapmasına gerek yok, link zaten
-// geçici bir oturum kuruyor).
-supabaseClient?.auth.onAuthStateChange((event) => {
+// geçici bir oturum kuruyor). emailLoginOverlay yoksa (satis.html/
+// yonetici.html — personel sayfaları) resetErrorEl/resetPasswordInput da
+// null'dur, erkenden çıkıyoruz — yoksa null referansta patlar.
+//
+// SIGNED_IN dalı ise "e-posta onay linkine tıklayıp siteye kendiliğinden
+// geri dönme" durumunu yakalıyor — o an buton sessizce "Biletlerim"e
+// dönüyordu ama kullanıcı bunu fark etmiyordu (bkz. daha önceki OTP/magic
+// link akışındaki aynı şikayet). authSelfInitiated true ise (yani bu SIGNED_IN
+// zaten kendi buton tıklamamızın sonucuysa) tekrar bildirmiyoruz.
+supabaseClient?.auth.onAuthStateChange((event, session) => {
   if(event === 'PASSWORD_RECOVERY'){
-    if(emailLoginOverlay) emailLoginOverlay.hidden = false;
+    if(!emailLoginOverlay) return;
+    emailLoginOverlay.hidden = false;
     resetErrorEl.hidden = true;
     resetPasswordInput.value = '';
     showEmailPanel('reset');
+    return;
+  }
+  // emailLoginOverlay yalnızca index.html'de (misafir sayfası) var --
+  // personel sayfalarında da signInWithPassword() çağrılıyor (bkz.
+  // tryPasswordLogin) ve o da SIGNED_IN fırlatıyor; bu kontrol olmadan
+  // personelin girişi burada "misafir e-postası" olarak yanlışlıkla
+  // verifiedEmail'e yazılırdı.
+  if(event === 'SIGNED_IN' && emailLoginOverlay && !authSelfInitiated && session?.user?.email){
+    verifiedEmail = session.user.email;
+    updateEmailLoginBtnLabel();
+    toast(`E-posta onaylandı — ${verifiedEmail} olarak giriş yaptın.`);
   }
 });
 
@@ -3164,10 +3201,15 @@ resetConfirmBtn?.addEventListener('click', async () => {
     toast('Bir şifre gir.');
     return;
   }
+  if(password.length < 6){
+    toast('Şifre en az 6 karakter olmalı.');
+    return;
+  }
   if(!supabaseClient) return;
 
   resetErrorEl.hidden = true;
   resetConfirmBtn.disabled = true;
+  authSelfInitiated = true;
   try {
     const { data, error } = await supabaseClient.auth.updateUser({ password });
     if(error) throw error;
@@ -3182,10 +3224,14 @@ resetConfirmBtn?.addEventListener('click', async () => {
     toast('Şifre güncellendi.');
   } catch(err){
     console.warn('Şifre güncellenemedi.', err);
-    resetErrorEl.textContent = err.message || 'Şifre güncellenemedi — buluta bağlanılamadı.';
+    const msg = err.message || '';
+    resetErrorEl.textContent = /password should be at least|password.*6 char/i.test(msg)
+      ? 'Şifre en az 6 karakter olmalı.'
+      : msg || 'Şifre güncellenemedi — buluta bağlanılamadı.';
     resetErrorEl.hidden = false;
   } finally {
     resetConfirmBtn.disabled = false;
+    authSelfInitiated = false;
   }
 });
 resetPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); resetConfirmBtn.click(); } });
