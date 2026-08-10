@@ -15,6 +15,13 @@ const supabaseClient = window.supabase
     })
   : null;
 
+// Panel > Authentication > URL Configuration'daki "Site URL" doğru
+// (https://eyupefealgin.github.io/koltuk-yerlesim-sistemi/) görünse de,
+// signUp()/resetPasswordForEmail()'in ürettiği onay/sıfırlama linklerinde
+// redirect_to hâlâ yol olmadan (sadece kök domain) çıkıyordu — panel
+// ayarına güvenmek yerine burada açıkça belirtiyoruz.
+const AUTH_REDIRECT_URL = 'https://eyupefealgin.github.io/koltuk-yerlesim-sistemi/';
+
 let isApplyingRemote = false; // true while applying an incoming update, so we don't echo it straight back
 let pushTimerSeatStates = null;
 let pushTimerLayout = null;
@@ -3073,7 +3080,7 @@ emailLoginSendBtn?.addEventListener('click', async () => {
   authSelfInitiated = true;
   try {
     const { data, error } = authTabMode === 'signup'
-      ? await supabaseClient.auth.signUp({ email, password })
+      ? await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: AUTH_REDIRECT_URL } })
       : await supabaseClient.auth.signInWithPassword({ email, password });
     if(error) throw error;
 
@@ -3148,7 +3155,7 @@ forgotSendBtn?.addEventListener('click', async () => {
   forgotErrorEl.hidden = true;
   forgotSendBtn.disabled = true;
   try {
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: AUTH_REDIRECT_URL });
     if(error) throw error;
     forgotInfoNote.textContent = `✓ ${email} adresine bir sıfırlama linki gönderdik — gelen kutunu (spam dahil) kontrol et.`;
     forgotInfoNote.hidden = false;
