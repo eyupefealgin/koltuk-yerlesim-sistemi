@@ -158,7 +158,10 @@
 
     <div class="ticket-prices" id="generalCapacitySection" hidden>
       <span class="ticket-prices-label">Kapasite:</span>
-      <div class="poster-row">
+      <div class="payment-method-row">
+        <label class="dynamic-toggle"><input type="checkbox" id="generalLimitedCheckbox"><span>Sınırlı Bilet</span></label>
+      </div>
+      <div class="poster-row" id="generalCapacityInputRow">
         <input type="number" id="generalCapacityInput" min="1" step="1" placeholder="Toplam kişi sayısı">
         <button class="btn btn-primary btn-sm" id="saveGeneralCapacityBtn" type="button">Kaydet</button>
       </div>
@@ -241,8 +244,6 @@
       <div class="legend" id="gridFilters" role="group" aria-label="Koltuk filtreleri">
         <button class="filter-chip is-active" data-filter="all" type="button">Tümü</button>
         <button class="filter-chip" data-filter="empty" type="button"><i class="swatch empty"></i> Boş</button>
-        <button class="filter-chip" data-filter="male" type="button"><i class="swatch male"></i> Erkek</button>
-        <button class="filter-chip" data-filter="female" type="button"><i class="swatch female"></i> Kadın</button>
         <button class="filter-chip" data-filter="sold" type="button"><i class="swatch sold-swatch"></i> Satılan</button>
       </div>
 
@@ -259,8 +260,6 @@
 
     <div class="stats editor-only" id="stats" aria-live="polite">
       <div class="stat"><strong id="statTotal">0</strong><span>Toplam</span></div>
-      <div class="stat"><strong id="statMale">0</strong><span>Erkek</span></div>
-      <div class="stat"><strong id="statFemale">0</strong><span>Kadın</span></div>
       <div class="stat"><strong id="statEmpty">0</strong><span>Boş</span></div>
       <div class="stat"><strong id="statSold">0</strong><span>Satılan</span></div>
       <div class="stat admin-only"><strong id="statRevenue">0 ₺</strong><span>Gelir</span></div>
@@ -308,7 +307,7 @@
       </div>
     </div>
 
-    <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç</p>
+    <p class="grid-hint" id="gridHint">Bir koltuğa tıkla: bilet türü ve ödeme yöntemini seç</p>
 
     <div class="screen-curve" id="screenAccent" aria-hidden="true"><span>PERDE</span></div>
     <div class="grid-scroll">
@@ -334,22 +333,13 @@
     <h3 id="seatModalTitle">Koltuk</h3>
     <p class="hold-countdown" id="holdCountdown" hidden></p>
 
-    <div class="modal-step-panel" data-panel="gender">
-      <p class="modal-subhead">1. Cinsiyet Seç</p>
-      <div class="modal-choice-row">
-        <button class="choice-btn choice-male" data-gender="male" type="button">Erkek</button>
-        <button class="choice-btn choice-female" data-gender="female" type="button">Kadın</button>
-      </div>
-    </div>
-
-    <div class="modal-step-panel" data-panel="tier" hidden>
-      <p class="modal-subhead">2. Bilet Türü Seç</p>
+    <div class="modal-step-panel" data-panel="tier">
+      <p class="modal-subhead">1. Bilet Türü Seç</p>
       <div class="modal-choice-row" id="modalTierButtons"></div>
     </div>
 
-
     <div class="modal-step-panel" data-panel="buyer" hidden>
-      <p class="modal-subhead">3. Alıcı Bilgisi</p>
+      <p class="modal-subhead">2. Alıcı Bilgisi</p>
       <input type="text" id="buyerNameInput" class="buyer-name-input" maxlength="60" placeholder="Ad Soyad">
       <input type="email" id="buyerEmailInput" class="buyer-name-input" maxlength="100" placeholder="E-posta (opsiyonel — 'Biletlerim' için)">
       <p class="buyer-note" id="buyerNoteText"></p>
@@ -357,7 +347,7 @@
     </div>
 
     <div class="modal-step-panel" data-panel="payment" hidden>
-      <p class="modal-subhead">4. Ödeme Yöntemi</p>
+      <p class="modal-subhead">3. Ödeme Yöntemi</p>
       <p class="payment-disclaimer" id="paymentDisclaimer" hidden>Bu demo bir sistemdir — seçim sadece kayıt amaçlıdır, gerçek bir ödeme alınmaz.</p>
 
       <div class="discount-row">
@@ -433,6 +423,10 @@
         </label>
       </div>
       <p class="stadium-note" id="newEventStadiumNote" hidden>Futbol Sahası için sabit 44 bloklu stadyum düzeni kullanılır.</p>
+      <div class="payment-method-row" id="newEventLimitedRow" hidden>
+        <label class="dynamic-toggle"><input type="checkbox" id="newEventLimitedCheckbox"><span>Sınırlı Bilet</span></label>
+        <input type="number" id="newEventCapacityInput" min="1" step="1" placeholder="Toplam kişi sayısı" hidden>
+      </div>
       <div class="payment-method-row" id="newEventPaymentRow">
         <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
         <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentKart" checked><span>Kart</span></label>

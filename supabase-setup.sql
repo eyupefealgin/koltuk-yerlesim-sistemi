@@ -293,6 +293,23 @@ create table if not exists seat_holds (
 alter table seat_holds disable row level security;
 grant select, insert, update, delete on seat_holds to anon, authenticated;
 
+-- seat_pos: futbol blok koltuklari icin (bkz. reserve_stadium_seat asagida)
+-- -- klasik tekli koltuklarda hep -1 (varsayilan), ayni event+blok icinde
+-- FARKLI koltuklarin birbirini "dolu" gostermemesi icin PK'ya eklendi.
+-- Once tek seferlik olarak eklenip PK genisletiliyor, idempotent (kolon/PK
+-- zaten varsa dokunmuyor).
+alter table seat_holds add column if not exists seat_pos int not null default -1;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint where conname = 'seat_holds_pkey' and conrelid = 'seat_holds'::regclass
+  ) then
+    alter table seat_holds drop constraint seat_holds_pkey;
+  end if;
+  alter table seat_holds add primary key (event_id, seat_idx, seat_pos);
+end $$;
+
 do $$
 begin
   if not exists (
@@ -309,11 +326,11 @@ language plpgsql
 security definer
 as $$
 begin
-  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and expires_at < now();
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_idx and seat_pos = -1 and expires_at < now();
 
   if exists (
     select 1 from seat_holds
-    where event_id = p_event_id and seat_idx = p_idx and hold_token <> p_token
+    where event_id = p_event_id and seat_idx = p_idx and seat_pos = -1 and hold_token <> p_token
   ) then
     raise exception 'SEAT_HELD';
   end if;
@@ -326,9 +343,9 @@ begin
     raise exception 'SEAT_UNAVAILABLE';
   end if;
 
-  insert into seat_holds (event_id, seat_idx, hold_token, expires_at)
-  values (p_event_id, p_idx, p_token, now() + (p_ttl_seconds || ' seconds')::interval)
-  on conflict (event_id, seat_idx)
+  insert into seat_holds (event_id, seat_idx, seat_pos, hold_token, expires_at)
+  values (p_event_id, p_idx, -1, p_token, now() + (p_ttl_seconds || ' seconds')::interval)
+  on conflict (event_id, seat_idx, seat_pos)
   do update set hold_token = excluded.hold_token, expires_at = excluded.expires_at;
 end;
 $$;
@@ -341,10 +358,56 @@ security definer
 as $$
 begin
   delete from seat_holds
-  where event_id = p_event_id and seat_idx = p_idx and hold_token = p_token;
+  where event_id = p_event_id and seat_idx = p_idx and seat_pos = -1 and hold_token = p_token;
 end;
 $$;
 grant execute on function release_seat_hold(uuid, int, text) to anon, authenticated;
+
+-- Futbol blok koltuklari icin reserve_seat/release_seat_hold'un esdegeri --
+-- eskiden blok koltuklarinda hic hold tutulmuyordu, iki misafir ayni koltuga
+-- tikladiginda ikisi de alici formunu doldurabiliyor, sadece SONUNCUSU
+-- "az once alindi" hatasi aliyordu (veri bozulmuyordu ama kotu bir deneyimdi).
+create or replace function reserve_stadium_seat(p_event_id uuid, p_block_idx int, p_seat_pos int, p_token text, p_ttl_seconds int default 300)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos and expires_at < now();
+
+  if exists (
+    select 1 from seat_holds
+    where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos and hold_token <> p_token
+  ) then
+    raise exception 'SEAT_HELD';
+  end if;
+
+  if not exists (
+    select 1 from events where id = p_event_id
+      and coalesce((seat_states -> p_block_idx -> p_seat_pos) #>> '{}', 'e') in ('e', 'empty')
+  ) then
+    raise exception 'SEAT_UNAVAILABLE';
+  end if;
+
+  insert into seat_holds (event_id, seat_idx, seat_pos, hold_token, expires_at)
+  values (p_event_id, p_block_idx, p_seat_pos, p_token, now() + (p_ttl_seconds || ' seconds')::interval)
+  on conflict (event_id, seat_idx, seat_pos)
+  do update set hold_token = excluded.hold_token, expires_at = excluded.expires_at;
+end;
+$$;
+grant execute on function reserve_stadium_seat(uuid, int, int, text, int) to anon, authenticated;
+
+create or replace function release_stadium_seat_hold(p_event_id uuid, p_block_idx int, p_seat_pos int, p_token text)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  delete from seat_holds
+  where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos and hold_token = p_token;
+end;
+$$;
+grant execute on function release_stadium_seat_hold(uuid, int, int, text) to anon, authenticated;
 
 -- Guvenlik denetimi: misafir satin alma RPC'lerine (purchase_seat,
 -- purchase_stadium_block) gelen p_sale/p_sales.price client'ta hesaplaniyor
@@ -517,6 +580,13 @@ alter table events add column if not exists payment_methods jsonb not null defau
 -- koltuk numarasi/bilet turu/fiyat yok, tek bir kapasiteli havuz (bkz.
 -- joinGeneralEvent). seat_states[0] o havuza KATILAN kisi sayisidir.
 alter table events add column if not exists general_capacity int not null default 500;
+
+-- "Sinirli Bilet" etkinlik olusturulurken kapali (pasif) gelir -- yani
+-- varsayilan SINIRSIZ katilim. Bunu ifade etmek icin general_capacity artik
+-- NULL olabiliyor (NULL = sinirsiz); not null kisitini kaldiriyoruz. Zaten
+-- var olan etkinliklerin sayisal degeri (500 vb.) degismeden kalir, sadece
+-- bundan sonra olusturulan "sinirsiz" etkinlikler NULL yazar.
+alter table events alter column general_capacity drop not null;
 
 -- Bir indirim kodunu atomik olarak "kullan": kod yoksa CODE_NOT_FOUND,
 -- kullanim limiti dolduysa CODE_EXHAUSTED hatasi verir; gecerliyse
@@ -842,10 +912,10 @@ begin
     raise exception 'INVALID_PRICE';
   end if;
 
-  delete from seat_holds where event_id = p_event_id and seat_idx = p_block_idx and expires_at < now();
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos and expires_at < now();
   if exists (
     select 1 from seat_holds
-    where event_id = p_event_id and seat_idx = p_block_idx and (p_token is null or hold_token <> p_token)
+    where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos and (p_token is null or hold_token <> p_token)
   ) then
     raise exception 'SEAT_HELD';
   end if;
@@ -888,6 +958,8 @@ begin
   if not found then
     raise exception 'SEAT_UNAVAILABLE';
   end if;
+
+  delete from seat_holds where event_id = p_event_id and seat_idx = p_block_idx and seat_pos = p_seat_pos;
 
   -- Ayni pad sorunu event_sales.seat_sales icin de gecerli -- ayni yontemle
   -- cozuluyor (bos pozisyonlar null ile doldurulur, bkz. client blockSaleStates).

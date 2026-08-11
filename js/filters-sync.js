@@ -23,7 +23,7 @@ function applyFilterAndSearch(){
     clearSearchBtn.hidden = !query;
   }
 
-  seatGrid.classList.remove('filter-empty', 'filter-male', 'filter-female', 'filter-sold', 'search-active');
+  seatGrid.classList.remove('filter-empty', 'filter-sold', 'search-active');
 
   const hasFilter = currentFilter !== 'all';
   const hasSearch = query.length > 0;
@@ -43,9 +43,9 @@ function applyFilterAndSearch(){
 
     if (hasSearch) {
       // Havuzlu modlarda (futbol/Genel Etkinlik) seatSales[idx] tekil bir
-      // kayıt değil bir DİZİ, ve state (satılan sayısı) 'male'/'female' hiç
-      // olmuyor — salesAt() ile normalize edip her satışı ayrı ayrı kontrol
-      // ediyoruz, cinsiyet aramasını da bu modda devre dışı bırakıyoruz
+      // kayıt değil bir DİZİ, ve state bir durum değil satılan SAYISI —
+      // salesAt() ile normalize edip her satışı ayrı ayrı kontrol ediyoruz,
+      // "Boş/Satıldı" durum aramasını da bu modda devre dışı bırakıyoruz
       // (bkz. blockSoldCount/salesAt).
       const pooled = isPooledMode();
       const sales = salesAt(idx);
@@ -240,7 +240,13 @@ function applySeatsPayload(row){
   POSTER_URL = safeImageUrl(row.poster_url);
   EVENT_NOTE = typeof row.note === 'string' && row.note.trim() ? row.note : null;
   PAYMENT_METHODS = Array.isArray(row.payment_methods) && row.payment_methods.length ? row.payment_methods : ['kart', 'nakit'];
-  GENERAL_CAPACITY = Number(row.general_capacity) > 0 ? Number(row.general_capacity) : DEFAULT_GENERAL_CAPACITY;
+  // general_capacity sütunda NULL = "Sınırlı Bilet" kapalı, yani sınırsız
+  // katılım (bkz. createEvent/renderGeneralCapacityEditor). Bellekte Infinity
+  // olarak tutuluyor — poolBlocks/joinGeneralEvent/renderSeatVisual'daki tüm
+  // kapasite - katılan aritmetiği değişiklik gerektirmeden doğru çalışır.
+  GENERAL_CAPACITY = row.general_capacity === null
+    ? Infinity
+    : (Number(row.general_capacity) > 0 ? Number(row.general_capacity) : DEFAULT_GENERAL_CAPACITY);
   // İsmi buradan da yazıyoruz: paylaşılan bir linkle doğrudan girildiğinde
   // etkinlik listesi henüz yüklenmemiş oluyor ve başlık boş kalıyordu.
   // (Yönetici etkinliği yeniden adlandırırsa da bu sayede anında güncellenir.)
@@ -344,7 +350,9 @@ function computeOccupancy(ev){
     // Etkinlik'te ise etkinliğin kendi general_capacity'sinden okunuyor.
     const total = ev.venue_type === 'futbol'
       ? STADIUM_BLOCKS.reduce((sum, b) => sum + b.capacity, 0)
-      : (Number(ev.general_capacity) > 0 ? Number(ev.general_capacity) : DEFAULT_GENERAL_CAPACITY);
+      : (ev.general_capacity === null
+          ? Infinity
+          : (Number(ev.general_capacity) > 0 ? Number(ev.general_capacity) : DEFAULT_GENERAL_CAPACITY));
     // Futbol bloklarında s artık bir SAYI değil, o bloktaki her koltuğun
     // kendi durumunu taşıyan bir DİZİ (bkz. purchase_stadium_seat) — bu
     // yüzden Array.isArray kontrolüyle dolu koltukları sayıyoruz; Genel

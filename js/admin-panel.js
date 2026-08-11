@@ -237,15 +237,35 @@ function renderNoteEditor(){
   }
 }
 
+// GENERAL_CAPACITY === null demek "Sınırlı Bilet" kapalı, yani sınırsız
+// katılım — kutucuk işaretsiz kalır ve sayı alanı gizlenir.
 function renderGeneralCapacityEditor(){
-  generalCapacityInput.value = GENERAL_CAPACITY;
+  const unlimited = GENERAL_CAPACITY === null;
+  generalLimitedCheckbox.checked = !unlimited;
+  generalCapacityInputRow.hidden = unlimited;
+  generalCapacityInput.value = unlimited ? '' : GENERAL_CAPACITY;
 }
+
+generalLimitedCheckbox.addEventListener('change', () => {
+  generalCapacityInputRow.hidden = !generalLimitedCheckbox.checked;
+  if(generalLimitedCheckbox.checked && !generalCapacityInput.value){
+    generalCapacityInput.value = DEFAULT_GENERAL_CAPACITY;
+    generalCapacityInput.focus();
+  }
+});
 
 saveGeneralCapacityBtn.addEventListener('click', async () => {
   if(!supabaseClient || !currentEventId) return;
-  const raw = Math.round(Number(generalCapacityInput.value));
-  const capacity = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_GENERAL_CAPACITY;
-  generalCapacityInput.value = capacity;
+  let capacity = null;
+  if(generalLimitedCheckbox.checked){
+    const raw = Math.round(Number(generalCapacityInput.value));
+    if(!Number.isFinite(raw) || raw < 1){
+      toast('Geçerli bir kapasite sayısı gir.');
+      return;
+    }
+    capacity = raw;
+    generalCapacityInput.value = capacity;
+  }
 
   saveGeneralCapacityBtn.disabled = true;
   const { error } = await supabaseClient.from('events').update({

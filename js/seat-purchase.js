@@ -1,4 +1,4 @@
-// ===== Seat modal: cinsiyet → bilet türü → alıcı bilgisi → ödeme yöntemi =====
+// ===== Seat modal: bilet türü → alıcı bilgisi → ödeme yöntemi =====
 
 function showModalPanel(name){
   document.querySelectorAll('.modal-step-panel').forEach(p => p.hidden = p.dataset.panel !== name);
@@ -41,7 +41,9 @@ async function openSeatModal(idx){
   modalSeatIdx = idx;
   modalSeatIndices = null;
   modalBlockSeatPos = null;
-  modalGender = null;
+  // modalGender artık kullanıcıya sorulmuyor — sabit bir "dolu" işareti,
+  // seat_states/purchase_seat atomik kontrolü için (bkz. SEAT_STATE_SHORT).
+  modalGender = 'male';
   modalTier = null;
   modalBuyerName = '';
   modalBuyerEmail = '';
@@ -54,7 +56,7 @@ async function openSeatModal(idx){
   const sale = seatSales[idx];
 
   if(state !== 'empty' || sale){
-    const parts = [`Cinsiyet: ${labelFor(state)}`];
+    const parts = [labelFor(state)];
     // Fiyat/bilet-türü/ödeme sadece personele gösterilir — CSS zaten
     // .editor-only ile gizliyor ama burada da JS'te kontrol ediyoruz
     // (modaller #appRoot dışında yaşıyor, bu yüzden CSS'e tek başına
@@ -98,7 +100,7 @@ async function openSeatModal(idx){
   discountCodeInput.value = '';
   discountNoteText.hidden = true;
   renderModalTierButtons();
-  showModalPanel('gender');
+  showModalPanel('tier');
   seatModalOverlay.hidden = false;
 }
 
@@ -131,13 +133,53 @@ function stopHoldCountdown(){
   holdCountdownEl.hidden = true;
 }
 
+// blockIdx null ise klasik ızgaradaki bir koltuk index'i, değilse activeBlockIdx
+// içindeki bir koltuk pozisyonu — hangisi olduğuna göre doğru RPC çağrılır.
+function releaseHeldSeat(idx, blockIdx){
+  if(!currentEventId) return;
+  const rpcName = blockIdx !== null ? 'release_stadium_seat_hold' : 'release_seat_hold';
+  const params = blockIdx !== null
+    ? { p_event_id: currentEventId, p_block_idx: blockIdx, p_seat_pos: idx, p_token: holdToken }
+    : { p_event_id: currentEventId, p_idx: idx, p_token: holdToken };
+  supabaseClient.rpc(rpcName, params)
+    .then(({ error }) => { if(error) console.warn('Rezervasyon serbest bırakılamadı.', error.message); });
+}
+
+// Toplu seçimdeki her koltuğu (klasik index ya da blok içindeki pos) ayrı
+// ayrı reserve_seat/reserve_stadium_seat ile tutmaya çalışır — biri az önce
+// başkası tarafından alınmış/bakılıyorsa sadece o başarısız olur, diğerleri
+// yine de tutulur. Tek atomik satın alma RPC'leri zaten bu korumayı
+// sağlıyordu (bkz. finalizeGuestBulkPurchase notu); bu ek katman sadece "iki
+// misafir aynı koltuğu aynı anda seçip forma kadar ilerleyebilme" kötü
+// deneyimini önlüyor.
+async function reserveBulkSeats(indices, blockIdx){
+  const held = [];
+  let failed = 0;
+  for(const idx of indices){
+    try {
+      const rpcName = blockIdx !== null ? 'reserve_stadium_seat' : 'reserve_seat';
+      const params = blockIdx !== null
+        ? { p_event_id: currentEventId, p_block_idx: blockIdx, p_seat_pos: idx, p_token: holdToken, p_ttl_seconds: HOLD_TTL_SECONDS }
+        : { p_event_id: currentEventId, p_idx: idx, p_token: holdToken, p_ttl_seconds: HOLD_TTL_SECONDS };
+      const { error } = await supabaseClient.rpc(rpcName, params);
+      if(error) throw error;
+      held.push(idx);
+    } catch(err){
+      failed++;
+    }
+  }
+  return { held, failed };
+}
+
 function closeSeatModal(){
   seatModalOverlay.hidden = true;
   stopHoldCountdown();
-  if(modalHeldIdx !== null && currentEventId){
-    supabaseClient.rpc('release_seat_hold', { p_event_id: currentEventId, p_idx: modalHeldIdx, p_token: holdToken })
-      .then(({ error }) => { if(error) console.warn('Rezervasyon serbest bırakılamadı.', error.message); });
-  }
+  // Blok içindeysek tutulan koltuklar da blok pozisyonu bazlı (bkz.
+  // openBlockSeatModal/startBulkSaleBtn) — activeBlockIdx modal açıkken
+  // değişmez, doğru RPC'yi seçmek için burada da okunuyor.
+  const blockIdx = activeBlockIdx;
+  if(modalHeldIdx !== null) releaseHeldSeat(modalHeldIdx, blockIdx);
+  if(modalHeldIndices && modalHeldIndices.length) modalHeldIndices.forEach(idx => releaseHeldSeat(idx, blockIdx));
   modalSeatIdx = null;
   modalSeatIndices = null;
   modalBlockSeatPos = null;
@@ -147,12 +189,13 @@ function closeSeatModal(){
   modalBuyerEmail = '';
   modalDiscount = null;
   modalHeldIdx = null;
+  modalHeldIndices = null;
 }
 
 // ===== Futbol bloğu içinde tek tek koltuk seçimi (sinema düzeni gibi) =====
 // Bir bloğa (ör. "Classic VIP 2") tıklayınca artık sadece bir adet
 // seçilmiyor — o bloğun İÇİNE girilip capacity kadar numaralı koltuk
-// gösteriliyor, her biri normal sinema koltuğu gibi tek tek (cinsiyet +
+// gösteriliyor, her biri normal sinema koltuğu gibi tek tek (bilet türü +
 // alıcı + ödeme) satın alınıyor. seatStates[blockIdx]/seatSales[blockIdx]
 // artık kendi başına bir dizi (bkz. blockSoldCount/purchase_stadium_seat).
 let activeBlockIdx = null;
@@ -229,15 +272,12 @@ function renderBlockSeatGrid(){
 function renderBlockSeatVisual(btn, pos){
   const state = blockSeatStates(activeBlockIdx)[pos] || 'e';
   const sale = blockSaleStates(activeBlockIdx)[pos];
-  btn.className = ['seat', state, sale ? 'sold' : null].filter(Boolean).join(' ');
+  btn.className = ['seat', isSeatTaken(state) ? 'taken' : 'empty', sale ? 'sold' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
   const num = document.createElement('span');
   num.className = 'seat-num';
   num.textContent = pos + 1;
   btn.appendChild(num);
-  // labelFor(state) "Erkek/Kadın/Boş" döner ama futbol bloklarında cinsiyet
-  // ayrımı yok (bkz. openBuyerPanelForBlockSeat) -- isSeatTaken ile dolu/boş
-  // olarak anons ediliyor.
   btn.setAttribute('aria-label', `${STADIUM_BLOCKS[activeBlockIdx].label} - Koltuk ${pos + 1}, durum: ${isSeatTaken(state) ? 'Dolu' : 'Boş'}`);
 }
 
@@ -286,9 +326,6 @@ async function openBlockSeatModal(pos){
   seatModalTitle.textContent = `${block.label} — Koltuk ${pos + 1}`;
 
   if(isSeatTaken(state) || sale){
-    // Futbol bloklarında koltuklar artık cinsiyete göre değil, sadece dolu/boş
-    // olarak takip ediliyor (bkz. openBuyerPanelForBlockSeat) — burada
-    // "Cinsiyet: ..." satırı gösterilmiyor.
     const parts = [];
     if(sale && canEdit()) parts.push(`Bilet: ${sale.label} — ${sale.price}₺ (${paymentLabel(sale.payment) || '-'})`);
     modalInfoTextEl.textContent = parts.length ? parts.join(' · ') : 'Bu koltuk satılmış.';
@@ -306,19 +343,37 @@ async function openBlockSeatModal(pos){
     return;
   }
 
+  // Boş koltuk: klasik openSeatModal'daki reserve_seat ile aynı mantık,
+  // sadece blok koltukları için — iki misafirin aynı koltuğa aynı anda
+  // tıklayıp forma kadar ilerleyebilmesini önler (bkz. reserve_stadium_seat).
+  if(currentEventId){
+    try {
+      const { error } = await supabaseClient.rpc('reserve_stadium_seat', {
+        p_event_id: currentEventId, p_block_idx: activeBlockIdx, p_seat_pos: pos, p_token: holdToken, p_ttl_seconds: HOLD_TTL_SECONDS,
+      });
+      if(error) throw error;
+      modalHeldIdx = pos;
+      startHoldCountdown();
+    } catch(err){
+      const held = err && err.message && err.message.includes('SEAT_HELD');
+      toast(held ? 'Bu koltuğa şu anda başka biri bakıyor, birazdan tekrar dene.' : 'Bu koltuk artık uygun değil.');
+      return;
+    }
+  }
+
   discountCodeInput.value = '';
   discountNoteText.hidden = true;
   openBuyerPanelForBlockSeat();
   seatModalOverlay.hidden = false;
 }
 
-// Futbol bloklarında koltuklar cinsiyete göre ayrılmıyor (sinema/tiyatrodan
-// farklı olarak stadyum tribününde bu ayrım anlamsız) -- bu yüzden hem tekli
-// hem çoklu blok koltuğu seçiminde cinsiyet paneli hiç gösterilmiyor,
-// doğrudan alıcı bilgisine geçiliyor. modalGender'a hâlâ sabit bir değer
-// yazılıyor çünkü seat_states/purchase_stadium_seat atomik "hâlâ boş mu"
-// kontrolü için hâlâ 'e'/'empty' DIŞINDA bir değere ihtiyaç duyuyor — bu
-// sadece dahili bir "dolu" işareti, kullanıcıya hiçbir yerde gösterilmiyor.
+// Blok koltuklarında da gösterilecek bir bilet-türü seçimi yok (tür zaten
+// blok tarafından sabit) -- bu yüzden hem tekli hem çoklu blok koltuğu
+// seçiminde doğrudan alıcı bilgisine geçiliyor. modalGender'a hâlâ sabit
+// bir değer yazılıyor çünkü seat_states/purchase_stadium_seat atomik "hâlâ
+// boş mu" kontrolü için hâlâ 'e'/'empty' DIŞINDA bir değere ihtiyaç
+// duyuyor — bu sadece dahili bir "dolu" işareti, kullanıcıya hiçbir yerde
+// gösterilmiyor (bkz. openSeatModal'daki aynı yaklaşım).
 function openBuyerPanelForBlockSeat(){
   modalGender = 'male';
   buyerNameInput.value = '';
@@ -480,13 +535,16 @@ async function finalizeBlockBulkPurchase(payment){
 async function joinGeneralEvent(){
   const block = poolBlocks()[0];
   const sold = blockSoldCount(0);
-  const remaining = block.capacity - sold;
+  const remaining = block.capacity - sold; // Infinity - sold = Infinity, hiç dolmaz
 
   if(remaining <= 0){
     toast('Bu etkinlik dolu.');
     return;
   }
-  if(!confirm(`${sold}/${block.capacity} katıldı — ${remaining} yer kaldı. Katılmak istiyor musun?`)) return;
+  const confirmText = block.capacity === Infinity
+    ? `${sold} katıldı — sınırsız katılım. Katılmak istiyor musun?`
+    : `${sold}/${block.capacity} katıldı — ${remaining} yer kaldı. Katılmak istiyor musun?`;
+  if(!confirm(confirmText)) return;
 
   if(currentRole !== 'guest'){
     seatStates[0] = sold + 1;
@@ -499,8 +557,13 @@ async function joinGeneralEvent(){
 
   if(!currentEventId) return;
   try {
+    // p_capacity SQL'de int — Infinity JSON'a serileşirken null'a döner ve RPC
+    // "her zaman dolu" gibi davranırdı (bkz. purchase_stadium_block'taki
+    // <= p_capacity kontrolü). Sınırsızsa Postgres int4'ün üst sınırını
+    // (pratikte hiç ulaşılamayacak bir tavan) gönderiyoruz.
+    const capacityParam = Number.isFinite(block.capacity) ? block.capacity : 2147483647;
     const { error } = await supabaseClient.rpc('purchase_stadium_block', {
-      p_event_id: currentEventId, p_idx: 0, p_quantity: 1, p_capacity: block.capacity, p_sales: [], p_token: holdToken,
+      p_event_id: currentEventId, p_idx: 0, p_quantity: 1, p_capacity: capacityParam, p_sales: [], p_token: holdToken,
     });
     if(error) throw error;
 
@@ -514,22 +577,6 @@ async function joinGeneralEvent(){
     toast(msg.includes('CAPACITY_EXCEEDED') ? 'Üzgünüz, etkinlik az önce doldu.' : 'Katılım kaydedilemedi — buluta bağlanılamadı.');
   }
 }
-
-document.querySelectorAll('.modal-step-panel[data-panel="gender"] [data-gender]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    // Bu panel artık sadece klasik/Genel Etkinlik akışında görünüyor -- futbol
-    // blok koltuklarında cinsiyet ayrımı yok, gösterilmiyor (bkz.
-    // openBuyerPanelForBlockSeat) -- bu yüzden burası hep tür paneline geçer.
-    modalGender = btn.dataset.gender;
-
-    const targets = modalSeatIndices && modalSeatIndices.length ? modalSeatIndices : [modalSeatIdx];
-    const conflicts = targets.filter(i => findAdjacencyConflict(i, modalGender)).length;
-    if(conflicts === 1) toast('Uyarı: yan koltukta farklı cinsiyet var.');
-    else if(conflicts > 1) toast(`Uyarı: ${conflicts} koltukta yan yana farklı cinsiyet var.`);
-
-    showModalPanel('tier');
-  });
-});
 
 function updatePaymentButtonsEnabled(){
   const needsConsent = !legalConsentRow.hidden;

@@ -56,17 +56,11 @@
   --gold-glow: rgba(185, 148, 86, 0.24);
   --gold-subtle: rgba(185, 148, 86, 0.12);
 
-  /* Cinsiyet renkleri — futbol bloklarında kaldırıldı (bkz.
-     openBuyerPanelForBlockSeat) ama klasik/tiyatro/konser modunda hâlâ
-     kullanılıyor. Mavi/gül kimliği korunuyor, kadife paletine göre
-     derinleştirildi. */
-  --male: #3E5C73;
-  --male-border: #5C82A0;
-  --male-bg: rgba(62, 92, 115, 0.18);
-
-  --female: #8C4058;
-  --female-border: #B5637A;
-  --female-bg: rgba(140, 64, 88, 0.18);
+  /* Dolu koltuk rengi — eskiden cinsiyete göre iki ayrı renk (erkek/kadın)
+     kullanılıyordu, artık cinsiyet ayrımı yok, tek bir "dolu" tonu. */
+  --taken: #3E5C73;
+  --taken-border: #5C82A0;
+  --taken-bg: rgba(62, 92, 115, 0.18);
 
   /* Durum — satılan kehribar AYNEN KALIYOR: pirinç vurgudan (buton/aktif
      durum) ayrı bir iş yapıyor, mavi/gül dolgularla karışmaması için hâlâ
@@ -671,8 +665,7 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 /* .filter-chip kendi display: inline-flex kuralını tanımladığı için
    tarayıcının varsayılan [hidden]{display:none} kuralını (UA-origin,
    eşit önem/özgüllükte author kuralına kaybediyor) burada AÇIKÇA ezmemiz
-   gerekiyor — yoksa element.hidden=true JS'te hiçbir görsel etki yapmaz
-   (bkz. futbol modunda Erkek/Kadın çiplerinin gizlenmesi). */
+   gerekiyor — yoksa element.hidden=true JS'te hiçbir görsel etki yapmaz. */
 .filter-chip[hidden]{ display: none; }
 
 .swatch.sold-swatch { background: var(--gold); border-color: var(--gold); }
@@ -718,8 +711,6 @@ body[data-role="guest"] .editor-only{ display: none !important; }
 }
 .swatch:hover{ transform: scale(1.15); }
 .swatch.empty{ background: var(--empty-bg); border-color: var(--empty-border); }
-.swatch.male{ background: var(--male); border-color: var(--male-border); }
-.swatch.female{ background: var(--female); border-color: var(--female-border); }
 
 .stats{ display: flex; gap: 8px; flex-wrap: wrap; }
 .stat{
@@ -1103,8 +1094,6 @@ select option{
 
 /* Dinamik Filtre & Arama Vurguları */
 .seat-grid.filter-empty .seat:not(.empty),
-.seat-grid.filter-male .seat:not(.male),
-.seat-grid.filter-female .seat:not(.female),
 .seat-grid.filter-sold .seat:not(.sold),
 .seat-grid.search-active .seat:not(.search-match) {
   opacity: 0.15;
@@ -1154,12 +1143,11 @@ select option{
 }
 .seat:hover{ transform: translateY(-2px); background: var(--tint-2); z-index: 2; }
 
-.seat.male{ background: var(--male); border-color: var(--male-border); color: #fff; }
-.seat.female{ background: var(--female); border-color: var(--female-border); color: #fff; }
+.seat.taken{ background: var(--taken); border-color: var(--taken-border); color: #fff; }
 
-/* Satılan koltuk — kehribar halka. Cinsiyet dolgusunun ÜZERİNE binen ayrı
-   bir katman olduğu için vurgu bordosundan farklı bir ton kullanıyor;
-   yoksa halka mavi/gül dolgu üstünde kayboluyordu. */
+/* Satılan koltuk — kehribar halka. Dolu koltuk dolgusunun ÜZERİNE binen
+   ayrı bir katman olduğu için vurgu bordosundan farklı bir ton kullanıyor;
+   yoksa halka dolgu üstünde kayboluyordu. */
 .seat.sold{ box-shadow: 0 0 0 2px var(--sold) inset; }
 
 .seat.bulk-selected{
@@ -1246,10 +1234,9 @@ select option{
   white-space: normal; text-align: center;
   position: relative;
   overflow: hidden;
-  /* Renk artık cinsiyete değil fiyat katmanına göre (satır içi stil,
-     bkz. renderStadiumGrid) — o katman renklerinin hepsi beyaz metinle
-     4.5:1+ verecek şekilde seçildi, durum sınıfından (erkek/kadın/boş)
-     bağımsız olarak beyaz sabitleniyor. */
+  /* Renk fiyat katmanına göre (satır içi stil, bkz. renderStadiumGrid) —
+     o katman renklerinin hepsi beyaz metinle 4.5:1+ verecek şekilde
+     seçildi, durum sınıfından (dolu/boş) bağımsız olarak beyaz sabitleniyor. */
   color: #fff !important;
 }
 .stadium-block .seat-num{ font-weight: 700; position: relative; z-index: 1; }
@@ -1317,16 +1304,6 @@ select option{
   grid-column: 1 / -1;
   margin-bottom: 8px;
   justify-self: start;
-}
-
-/* Blok içi koltuklarda artık cinsiyet ayrımı yok (bkz. script.js
-   openBuyerPanelForBlockSeat) -- dahili state hâlâ "male" olarak yazılıyor
-   (purchase_stadium_seat'in atomik boş-kontrolü için) ama görsel olarak
-   mavi/pembe cinsiyet renkleri yerine tek, nötr bir "dolu" rengi gösteriliyor. */
-.seat-grid.block-seat-mode .seat.male{
-  background: var(--sold);
-  border-color: var(--sold);
-  color: #2B1A00;
 }
 
 /* ===== Fiyat katmanı lejantı (yalnızca futbol) ===== */
@@ -1452,8 +1429,6 @@ select option{
   transition: border-color .2s ease, color .2s ease, background .2s ease;
 }
 .choice-btn:hover{ border-color: var(--gold); color: var(--gold-dim); background: var(--gold-subtle); }
-.choice-btn.choice-male:hover{ border-color: var(--male); color: var(--male-border); background: var(--male-bg); }
-.choice-btn.choice-female:hover{ border-color: var(--female); color: var(--female-border); background: var(--female-bg); }
 
 .modal-info-text{ color: var(--text-secondary); font-size: .94rem; line-height: 1.7; margin: 0 0 22px; }
 .modal-info-actions{ display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
@@ -1475,6 +1450,12 @@ select option{
 }
 .buyer-name-input:focus{ border-color: var(--gold); background: var(--tint-2); outline: none; }
 .buyer-note{ font-size: .78rem; color: var(--text-muted); margin: 0 0 16px; min-height: 1em; }
+
+/* Kayıt Ol sekmesinde ad/soyad — Giriş Yap'ta hiç görünmüyor (bkz. auth.js
+   setAuthTab). İki input yan yana, ortak alt boşluk row'un kendisinde. */
+.signup-name-row{ display: flex; gap: 10px; margin-bottom: 10px; }
+.signup-name-row .buyer-name-input{ margin-bottom: 0; }
+.signup-name-row[hidden]{ display: none; }
 
 /* Giriş Yap / Kayıt Ol sekmeleri — hangisi seçiliyse ona göre farklı bir
    Supabase Auth çağrısı yapılıyor (bkz. script.js setAuthTab). .mode-chip'in

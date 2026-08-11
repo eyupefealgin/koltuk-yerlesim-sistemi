@@ -66,7 +66,7 @@ async function enterEvent(id, nameHint, skipUrl){
   resetAllBtn.hidden = !canEdit();
 
   gridHint.textContent = canEdit()
-    ? 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç'
+    ? 'Bir koltuğa tıkla: bilet türü ve ödeme yöntemini seç'
     : 'Boş bir koltuğa tıklayarak kendi biletini satın alabilirsin.';
 
   // Reset local state before the fetch resolves so a stale previous event's

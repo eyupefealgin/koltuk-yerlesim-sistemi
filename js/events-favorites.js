@@ -84,9 +84,11 @@ function renderHeroMeta(list){
 
   if(!list.length){ el.hidden = true; return; }
 
+  // Sınırsız (total === Infinity) etkinlikler bu toplama katılmıyor — aksi
+  // halde tek bir sınırsız etkinlik tüm sayacı Infinity'e sürüklerdi.
   const bosKoltuk = list.reduce((sum, ev) => {
     const { total, filled } = computeOccupancy(ev);
-    return sum + Math.max(0, total - filled);
+    return total === Infinity ? sum : sum + Math.max(0, total - filled);
   }, 0);
 
   el.textContent = `${list.length} etkinlik · ${bosKoltuk} boş koltuk`;
@@ -126,7 +128,11 @@ function renderEventList(){
   renderHeroMeta(filtered);
 
   filtered.forEach(ev => {
-    const { total, pct } = computeOccupancy(ev);
+    const { total, filled, pct } = computeOccupancy(ev);
+    // total Infinity ise "Sınırlı Bilet" kapalı bir Genel Etkinlik —
+    // yüzde/koltuk sayısı yerine "Sınırsız" ve katılan sayısı gösteriliyor.
+    const fillText = total === Infinity ? `${filled} katılımcı · Sınırsız` : `%${pct} dolu · ${total} koltuk`;
+    const fillPct = total === Infinity ? 0 : pct;
     const venueLabel = (VENUE_TYPES[ev.venue_type] || VENUE_TYPES.sinema).label;
     const statusLabel = ev.status === 'archived' ? 'Arşivlendi' : 'Aktif';
 
@@ -159,8 +165,8 @@ function renderEventList(){
         <p class="program-note" hidden></p>
       </div>
       <div class="program-fill">
-        <div class="capacity-bar-bg"><div class="capacity-bar" style="width:${pct}%"></div></div>
-        <span>%${pct} dolu · ${total} koltuk</span>
+        <div class="capacity-bar-bg"><div class="capacity-bar" style="width:${fillPct}%"></div></div>
+        <span>${fillText}</span>
       </div>
       <div class="program-actions">
         <button class="btn btn-gold btn-sm event-enter-btn" type="button">Gir</button>
@@ -409,12 +415,23 @@ function toggleNewEventDimsVisibility(){
   // Genel Etkinlik'te bilet türü/ödeme adımı hiç yok (bkz. joinGeneralEvent)
   // — ödeme yöntemi seçimi de anlamsız, gizleniyor.
   newEventPaymentRow.hidden = isGenel;
+  // "Sınırlı Bilet" sadece Genel Etkinlik'te anlamlı — kapalı (pasif)
+  // gelir, yani varsayılan sınırsız katılım.
+  newEventLimitedRow.hidden = !isGenel;
   if(isFutbol){
     newEventStadiumNote.textContent = `Futbol Sahası için sabit ${STADIUM_BLOCKS.length} bloklu stadyum düzeni kullanılır.`;
   } else if(isGenel){
-    newEventStadiumNote.textContent = 'Genel Etkinlik ücretsiz/biletsiz tek bir giriş havuzudur — koltuk numarası ve bilet türü/fiyat yok, sadece toplam kapasite. Kapasiteyi oluşturduktan sonra ayarlayabilirsin.';
+    newEventStadiumNote.textContent = 'Genel Etkinlik ücretsiz/biletsiz tek bir giriş havuzudur — koltuk numarası ve bilet türü/fiyat yok, sadece toplam kapasite.';
   }
 }
+
+newEventLimitedCheckbox.addEventListener('change', () => {
+  newEventCapacityInput.hidden = !newEventLimitedCheckbox.checked;
+  if(newEventLimitedCheckbox.checked){
+    if(!newEventCapacityInput.value) newEventCapacityInput.value = DEFAULT_GENERAL_CAPACITY;
+    newEventCapacityInput.focus();
+  }
+});
 
 function openCreateEventModal(){
   newEventName.value = '';
@@ -425,6 +442,9 @@ function openCreateEventModal(){
   newEventRows.value = 8;
   newEventPaymentKart.checked = true;
   newEventPaymentNakit.checked = true;
+  newEventLimitedCheckbox.checked = false;
+  newEventCapacityInput.value = '';
+  newEventCapacityInput.hidden = true;
   toggleNewEventDimsVisibility();
   createEventOverlay.hidden = false;
   newEventName.focus();
@@ -453,11 +473,10 @@ async function createEvent(){
     return;
   }
 
-  // general_capacity sütunu "not null" — diğer venue türlerinde hiç
-  // okunmuyor ama insert'e AÇIKÇA null geçmek Postgres'te varsayılan
-  // değeri (500) devre dışı bırakıp not-null ihlali veriyordu, bu yüzden
-  // burada da varsayılana çekiliyor.
-  let evCols, evRows, states, evTiers, evGeneralCapacity = DEFAULT_GENERAL_CAPACITY;
+  // general_capacity artık nullable — null demek "Sınırlı Bilet" kapalı,
+  // yani sınırsız katılım (bkz. computeOccupancy/joinGeneralEvent). Diğer
+  // venue türlerinde bu alan hiç okunmuyor, null geçilir.
+  let evCols, evRows, states, evTiers, evGeneralCapacity = null;
   if(vType === 'futbol'){
     evCols = STADIUM_BLOCKS.length;
     evRows = 1;
@@ -467,8 +486,16 @@ async function createEvent(){
   } else if(vType === 'genel'){
     // Genel Etkinlik'te koltuk numarası da bilet türü/fiyat da yok — tek bir
     // ücretsiz giriş havuzu (bkz. poolBlocks/joinGeneralEvent). "boş" burada
-    // da 0 (katılan kişi sayısı).
-    evGeneralCapacity = DEFAULT_GENERAL_CAPACITY;
+    // da 0 (katılan kişi sayısı). "Sınırlı Bilet" işaretli değilse sınırsız
+    // (general_capacity = null).
+    if(newEventLimitedCheckbox.checked){
+      const cap = Math.round(Number(newEventCapacityInput.value));
+      if(!Number.isFinite(cap) || cap < 1){
+        toast('Geçerli bir kapasite sayısı gir.');
+        return;
+      }
+      evGeneralCapacity = cap;
+    }
     evCols = 1;
     evRows = 1;
     states = [0];

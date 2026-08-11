@@ -56,6 +56,9 @@ const authTabSignupBtn = document.getElementById('authTabSignup');
 const emailLoginNoteEl = document.getElementById('emailLoginNote');
 const emailLoginTitleEl = document.getElementById('emailLoginTitle');
 const loginSuccessNoteEl = document.getElementById('loginSuccessNote');
+const signupNameRow = document.getElementById('signupNameRow');
+const signupFirstNameInput = document.getElementById('signupFirstNameInput');
+const signupLastNameInput = document.getElementById('signupLastNameInput');
 
 function setAuthTab(mode){
   authTabMode = mode;
@@ -64,12 +67,17 @@ function setAuthTab(mode){
   if(emailLoginTitleEl) emailLoginTitleEl.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
   if(emailLoginNoteEl){
     emailLoginNoteEl.textContent = mode === 'signup'
-      ? 'Hesap oluşturmak için e-posta ve bir şifre belirle.'
+      ? 'Hesap oluşturmak için ad soyad, e-posta ve bir şifre belirle.'
       : 'E-posta ve şifreni gir.';
   }
   if(emailLoginSendBtn) emailLoginSendBtn.textContent = mode === 'signup' ? 'Hesap Oluştur' : 'Giriş Yap';
   if(emailLoginPasswordInput) emailLoginPasswordInput.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
   if(forgotPasswordBtn) forgotPasswordBtn.hidden = mode === 'signup';
+  if(signupNameRow) signupNameRow.hidden = mode !== 'signup';
+  if(mode === 'login'){
+    if(signupFirstNameInput) signupFirstNameInput.value = '';
+    if(signupLastNameInput) signupLastNameInput.value = '';
+  }
   if(emailLoginErrorEl) emailLoginErrorEl.hidden = true;
   if(emailLoginInfoNote) emailLoginInfoNote.hidden = true;
 }
@@ -154,6 +162,12 @@ emailLoginOverlay?.addEventListener('click', (e) => { if(e.target === emailLogin
 emailLoginSendBtn?.addEventListener('click', async () => {
   const email = emailLoginEmailInput.value.trim();
   const password = emailLoginPasswordInput.value;
+  const firstName = signupFirstNameInput ? signupFirstNameInput.value.trim() : '';
+  const lastName = signupLastNameInput ? signupLastNameInput.value.trim() : '';
+  if(authTabMode === 'signup' && (!firstName || !lastName)){
+    toast('Ad ve soyad gir.');
+    return;
+  }
   if(!email || !email.includes('@')){
     toast('Geçerli bir e-posta adresi gir.');
     return;
@@ -177,7 +191,10 @@ emailLoginSendBtn?.addEventListener('click', async () => {
   authSelfInitiated = true;
   try {
     const { data, error } = authTabMode === 'signup'
-      ? await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: AUTH_REDIRECT_URL } })
+      ? await supabaseClient.auth.signUp({
+          email, password,
+          options: { emailRedirectTo: AUTH_REDIRECT_URL, data: { first_name: firstName, last_name: lastName } },
+        })
       : await supabaseClient.auth.signInWithPassword({ email, password });
     if(error) throw error;
 
@@ -228,6 +245,8 @@ emailLoginSendBtn?.addEventListener('click', async () => {
     authSelfInitiated = false;
   }
 });
+signupFirstNameInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); signupLastNameInput?.focus(); } });
+signupLastNameInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginEmailInput.focus(); } });
 emailLoginEmailInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
 emailLoginPasswordInput?.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); emailLoginSendBtn.click(); } });
 

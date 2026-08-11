@@ -57,7 +57,7 @@ const startBulkSaleBtn = document.getElementById('startBulkSaleBtn');
 const startBulkSaleLabel = document.getElementById('startBulkSaleLabel');
 const bulkCountEl = document.getElementById('bulkCount');
 
-// Seat modal (satış akışı: cinsiyet → bilet türü → alıcı → ödeme)
+// Seat modal (satış akışı: bilet türü → alıcı → ödeme)
 const seatModalOverlay = document.getElementById('seatModalOverlay');
 const seatModalTitle = document.getElementById('seatModalTitle');
 const seatModalClose = document.getElementById('seatModalClose');
@@ -105,11 +105,19 @@ const newEventPaymentRow = document.getElementById('newEventPaymentRow');
 const newEventPaymentKart = document.getElementById('newEventPaymentKart');
 const newEventPaymentNakit = document.getElementById('newEventPaymentNakit');
 
+// Genel Etkinlik: oluşturma anında sınırlı/sınırsız bilet seçimi (bkz.
+// toggleNewEventDimsVisibility/createEvent) — varsayılan pasif (sınırsız).
+const newEventLimitedRow = document.getElementById('newEventLimitedRow');
+const newEventLimitedCheckbox = document.getElementById('newEventLimitedCheckbox');
+const newEventCapacityInput = document.getElementById('newEventCapacityInput');
+
 // Genel Etkinlik: tek ücretsiz giriş havuzunun kapasitesi + bilet türü/
 // fiyat (tierPanelSection) ve indirim kodu (discountPanelSection) panelleri
 // — ikisi de fiyatlı bilet varsayar, Genel Etkinlik'te anlamsız (bkz.
 // renderVenueAccent).
 const generalCapacitySection = document.getElementById('generalCapacitySection');
+const generalLimitedCheckbox = document.getElementById('generalLimitedCheckbox');
+const generalCapacityInputRow = document.getElementById('generalCapacityInputRow');
 const generalCapacityInput = document.getElementById('generalCapacityInput');
 const saveGeneralCapacityBtn = document.getElementById('saveGeneralCapacityBtn');
 const tierPanelSection = document.getElementById('tierPanelSection');
@@ -198,7 +206,8 @@ let modalGender = null;
 let modalTier = null;
 let modalBuyerName = '';
 let modalBuyerEmail = '';
-let modalHeldIdx = null;       // reserve_seat başarılı olduysa tutulan koltuk index'i
+let modalHeldIdx = null;       // reserve_seat/reserve_stadium_seat başarılı olduysa tutulan TEK koltuk index'i (blok içindeyse pos)
+let modalHeldIndices = null;   // toplu seçimde tutulan koltuk index'lerinin (ya da blok pos'larının) dizisi
 let holdCountdownInterval = null;
 let holdExpiresAt = null;
 let modalDiscount = null;      // { code, type, value } — uygulanmış indirim (varsa)
@@ -300,7 +309,7 @@ function renderVenueAccent(){
   bulkModeBtn.hidden = pooled && !inBlock;
   if(pooled && !inBlock) setBulkMode(false);
 
-  // Filtre çipleri (Tümü/Boş/Erkek/Kadın/Satılan) havuzlu modda anlamsız —
+  // Filtre çipleri (Tümü/Boş/Satılan) havuzlu modda anlamsız —
   // her blok/havuzun üzerinde zaten kendi "X/Y" sayısı yazıyor, ayrıca bir
   // dolu/boş filtresine gerek yok. Takılı kalmış bir filtre varsa (başka bir
   // türden geçilirken) tüm ızgara soluk görünür kalmasın diye sıfırlanıyor.
@@ -619,7 +628,7 @@ function setAccessMode(on){
   accessModeBtn?.classList.toggle('is-active', on);
   gridHint.textContent = on
     ? 'Erişilebilir olacak koltuklara tıkla — tekrar tıklayınca kaldırılır. Bitirince modu kapat.'
-    : 'Bir koltuğa tıkla: cinsiyet, bilet türü ve ödeme yöntemini seç';
+    : 'Bir koltuğa tıkla: bilet türü ve ödeme yöntemini seç';
   if(on) setBulkMode(false);
 }
 
@@ -642,20 +651,50 @@ function pruneAccessibleSeats(total){
   return changed;
 }
 
-startBulkSaleBtn.addEventListener('click', () => {
+startBulkSaleBtn.addEventListener('click', async () => {
   if(bulkSelected.size === 0) return;
   if(!requireGuestLogin()) return;
-  modalSeatIndices = [...bulkSelected];
+
+  const requested = [...bulkSelected];
+  const blockIdx = activeBlockIdx; // null ise klasik ızgara
+  let indices = requested;
+
+  // Seçimdeki her koltuğu tek tek tut — biri az önce başkası tarafından
+  // alınmış/bakılıyorsa sadece o düşer, kalanlarla devam edilir (bkz.
+  // reserveBulkSeats). currentEventId yoksa (yerel/bağlantısız durum) hiç
+  // rezervasyon denenmez, eskisi gibi doğrudan devam eder.
+  if(currentEventId){
+    const { held, failed } = await reserveBulkSeats(requested, blockIdx);
+    if(!held.length){
+      toast('Seçtiğin koltuklara şu anda başka biri bakıyor, birazdan tekrar dene.');
+      return;
+    }
+    if(failed){
+      requested.filter(i => !held.includes(i)).forEach(i => {
+        bulkSelected.delete(i);
+        const btn = seatButtons[i];
+        if(btn) btn.classList.remove('bulk-selected');
+      });
+      updateBulkToolbar();
+      toast(`${failed} koltuk az önce başkası tarafından alındı — kalan ${held.length} koltukla devam ediliyor.`);
+    }
+    indices = held;
+    modalHeldIndices = held;
+    startHoldCountdown();
+  }
+
+  modalSeatIndices = indices;
   modalSeatIdx = null;
   modalBlockSeatPos = null;
-  modalGender = null;
+  // modalGender artık kullanıcıya sorulmuyor (bkz. openSeatModal) — sabit
+  // bir "dolu" işareti, seat_states/purchase_seat atomik kontrolü için.
+  modalGender = 'male';
 
-  // Blok içindeki çoklu seçim: tür zaten blok tarafından sabit, cinsiyet
-  // ayrımı da yok (bkz. openBuyerPanelForBlockSeat) — tür VE cinsiyet
-  // panelleri atlanıp doğrudan alıcı bilgisine geçiliyor.
-  if(activeBlockIdx !== null){
-    modalTier = STADIUM_BLOCKS[activeBlockIdx].tier;
-    seatModalTitle.textContent = `${STADIUM_BLOCKS[activeBlockIdx].label} — ${modalSeatIndices.length} Koltuk`;
+  // Blok içindeki çoklu seçim: tür zaten blok tarafından sabit — tür paneli
+  // atlanıp doğrudan alıcı bilgisine geçiliyor.
+  if(blockIdx !== null){
+    modalTier = STADIUM_BLOCKS[blockIdx].tier;
+    seatModalTitle.textContent = `${STADIUM_BLOCKS[blockIdx].label} — ${modalSeatIndices.length} Koltuk`;
     openBuyerPanelForBlockSeat();
     seatModalOverlay.hidden = false;
     return;
@@ -664,33 +703,24 @@ startBulkSaleBtn.addEventListener('click', () => {
   modalTier = null;
   seatModalTitle.textContent = `${modalSeatIndices.length} Koltuk`;
   renderModalTierButtons();
-  showModalPanel('gender');
+  showModalPanel('tier');
   seatModalOverlay.hidden = false;
 });
 
 function labelFor(state){
-  return state === 'male' ? 'Erkek' : state === 'female' ? 'Kadın' : 'Boş';
+  return isSeatTaken(state) ? 'Satıldı' : 'Boş';
+}
+
+// Genel Etkinlik'te "Sınırlı Bilet" kapalıysa GENERAL_CAPACITY Infinity
+// olur (bkz. filters-sync.js applySeatsPayload) — ekrana ham "Infinity"
+// yazmamak için tek bir yerden metne çeviriyoruz.
+function capacityLabel(capacity){
+  return capacity === Infinity ? '∞' : String(capacity);
 }
 
 function paymentLabel(payment){
   const normalized = PAYMENT_LONG[payment] || payment;
   return normalized === 'kart' ? 'Kart' : normalized === 'nakit' ? 'Nakit' : null;
-}
-
-// Same-row immediate left/right neighbor check. Warns (doesn't block) when a
-// gender assignment would put opposite genders directly side by side.
-// Havuzlu modlar (futbol/Genel Etkinlik) basit sütun×satır ızgarası
-// kullanmadığı için bu kontrol orada uygulanmıyor.
-function findAdjacencyConflict(idx, gender){
-  if(isPooledMode()) return false;
-  const col = idx % cols;
-  const neighbors = [];
-  if(col > 0) neighbors.push(idx - 1);
-  if(col < cols - 1) neighbors.push(idx + 1);
-  return neighbors.some(n => {
-    const st = seatStates[n];
-    return st && st !== 'empty' && st !== gender;
-  });
 }
 
 function seatAriaLabel(idx){
@@ -699,8 +729,8 @@ function seatAriaLabel(idx){
     const capacity = block.capacity;
     const sold = blockSoldCount(idx);
     let label = isStadiumMode()
-      ? `${block.label} Bloğu, ${sold}/${capacity} satıldı`
-      : `${block.label}, ${sold}/${capacity} katıldı`;
+      ? `${block.label} Bloğu, ${sold}/${capacityLabel(capacity)} satıldı`
+      : `${block.label}, ${sold}/${capacityLabel(capacity)} katıldı`;
     if(ACCESSIBLE_SEATS.has(idx)) label += ', erişilebilir';
     return label;
   }
@@ -740,7 +770,7 @@ function renderSeatVisual(btn, idx){
 
     const fraction = document.createElement('span');
     fraction.className = 'stadium-block-fraction';
-    fraction.textContent = `${sold}/${capacity}`;
+    fraction.textContent = `${sold}/${capacityLabel(capacity)}`;
     btn.appendChild(fraction);
 
     const fillBar = document.createElement('span');
@@ -756,20 +786,21 @@ function renderSeatVisual(btn, idx){
       btn.appendChild(wheel);
     }
 
-    btn.title = full ? (isStadiumMode() ? 'Bu blok dolu.' : 'Bu etkinlik dolu.') : `${capacity - sold} yer kaldı.`;
+    btn.title = full
+      ? (isStadiumMode() ? 'Bu blok dolu.' : 'Bu etkinlik dolu.')
+      : (capacity === Infinity ? 'Sınırsız katılım.' : `${capacity - sold} yer kaldı.`);
     btn.setAttribute('aria-label', seatAriaLabel(idx));
     return;
   }
 
-  // ---- Diğer venue türleri: davranış değişmedi (tek koltuk = tek alıcı) ----
+  // ---- Diğer venue türleri: tek koltuk = tek alıcı, cinsiyet ayrımı yok ----
   const state = seatStates[idx] || 'empty';
   const sale = seatSales[idx];
-  // "empty" de dahil DAİMA bir durum sınıfı eklenmeli: "Boş" filtre çipi
-  // .seat:not(.empty) arıyor — eskiden boş koltuklar hiç sınıf almadığı
-  // için bu filtre hiçbir zaman doğru koltuğu bulamıyor, her şeyi
-  // soluklaştırıyordu. .seat.empty için ayrı bir görsel kural yok, o
-  // yüzden bu eklemenin görünüme etkisi yok, sadece filtreyi düzeltiyor.
-  btn.className = ['seat', state, sale ? 'sold' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
+  // Durum sınıfı 'taken'/'empty' — ham state değeri (hâlâ dahili olarak
+  // 'male' olabilir, bkz. openSeatModal) artık CSS'e hiç sızmıyor, eski
+  // verideki 'female' işaretli koltuklar da yenilerle aynı görünür.
+  // "Boş" filtre çipi .seat:not(.taken) arıyor.
+  btn.className = ['seat', isSeatTaken(state) ? 'taken' : 'empty', sale ? 'sold' : null, accessible ? 'accessible' : null].filter(Boolean).join(' ');
   btn.innerHTML = '';
 
   const num = document.createElement('span');
@@ -802,34 +833,24 @@ function updateStats(){
   const pooled = isPooledMode();
   let total, taken, sold;
 
-  // Havuzlu modlarda (futbol/Genel Etkinlik) seatStates[idx] cinsiyet değil
-  // satılan bilet SAYISI — "Erkek"/"Kadın" kartlarının burada karşılığı yok
-  // (bkz. poolBlocks/blockSoldCount), bu yüzden gizlenip toplam kapasite/
+  // Havuzlu modlarda (futbol/Genel Etkinlik) seatStates[idx] dolu/boş değil
+  // satılan bilet SAYISI (bkz. poolBlocks/blockSoldCount) — toplam kapasite/
   // satılan adet üzerinden hesaplanıyor.
-  const maleStatEl = document.getElementById('statMale').closest('.stat');
-  const femaleStatEl = document.getElementById('statFemale').closest('.stat');
-  if(maleStatEl) maleStatEl.hidden = pooled;
-  if(femaleStatEl) femaleStatEl.hidden = pooled;
-
   if(pooled){
     const blocks = poolBlocks();
     total = blocks.reduce((sum, b) => sum + b.capacity, 0);
     taken = blocks.reduce((sum, b, idx) => sum + blockSoldCount(idx), 0);
     sold = taken;
   } else {
-    const male = seatStates.filter(s => s === 'male').length;
-    const female = seatStates.filter(s => s === 'female').length;
-    document.getElementById('statMale').textContent = male;
-    document.getElementById('statFemale').textContent = female;
     total = seatStates.length;
-    taken = male + female;
+    taken = seatStates.filter(isSeatTaken).length;
     sold = seatSales.filter(Boolean).length;
   }
 
   const revenue = allSalesFlat().reduce((sum, s) => sum + s.price, 0);
 
-  document.getElementById('statTotal').textContent = total;
-  document.getElementById('statEmpty').textContent = total - taken;
+  document.getElementById('statTotal').textContent = capacityLabel(total);
+  document.getElementById('statEmpty').textContent = total === Infinity ? '∞' : total - taken;
   document.getElementById('statSold').textContent = sold;
   document.getElementById('statRevenue').textContent = `${revenue} ₺`;
 
