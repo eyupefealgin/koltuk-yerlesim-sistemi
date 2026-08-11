@@ -237,10 +237,12 @@ function renderNoteEditor(){
   }
 }
 
-// GENERAL_CAPACITY === null demek "Sınırlı Bilet" kapalı, yani sınırsız
-// katılım — kutucuk işaretsiz kalır ve sayı alanı gizlenir.
+// GENERAL_CAPACITY === Infinity demek "Sınırlı Bilet" kapalı, yani sınırsız
+// katılım — kutucuk işaretsiz kalır ve sayı alanı gizlenir. Infinity (not
+// null) çünkü bellekte bu şekilde tutuluyor; null sadece DB'deki karşılığı
+// (bkz. applySeatsPayload'daki dönüşüm).
 function renderGeneralCapacityEditor(){
-  const unlimited = GENERAL_CAPACITY === null;
+  const unlimited = GENERAL_CAPACITY === Infinity;
   generalLimitedCheckbox.checked = !unlimited;
   generalCapacityInputRow.hidden = unlimited;
   generalCapacityInput.value = unlimited ? '' : GENERAL_CAPACITY;
