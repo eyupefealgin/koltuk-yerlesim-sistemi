@@ -1496,52 +1496,71 @@ select option{
 .favorite-star.is-favorite{ color: var(--gold); }
 
 /* Bildirim çanı — yeni/yaklaşan/bitmek üzere etkinlikler için, events
-   dizisinden anlık hesaplanıyor (bkz. computeNotifications). */
+   dizisinden anlık hesaplanıyor (bkz. computeNotifications). Site genelinde
+   emoji yok, tüm ikonlar ince çizgili SVG (bkz. .modal-close) — çan da
+   aynı dile uyuyor. */
 .notif-wrap{ position: relative; }
-.notif-bell{ position: relative; font-size: 1.05rem; padding-inline: 16px; }
+.notif-bell{
+  position: relative;
+  width: 48px; height: 48px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.notif-bell svg{ width: 19px; height: 19px; }
 .notif-badge{
-  position: absolute; top: -6px; right: -6px;
-  min-width: 18px; height: 18px; padding: 0 4px;
+  position: absolute; top: 4px; right: 4px;
+  min-width: 16px; height: 16px; padding: 0 3px;
   border-radius: 999px;
   background: var(--danger); color: #fff;
-  font-size: .68rem; font-weight: 700; line-height: 18px; text-align: center;
+  font-size: .62rem; font-weight: 700; line-height: 16px; text-align: center;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--surface-solid);
 }
 .notif-badge[hidden]{ display: none; }
 
 .notif-panel{
-  position: absolute; top: calc(100% + 8px); left: 0;
-  width: 320px; max-height: 360px; overflow-y: auto;
+  position: absolute; top: calc(100% + 10px); left: 0;
+  width: 340px; max-height: 380px; overflow-y: auto;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
   z-index: 60;
 }
 .notif-panel[hidden]{ display: none; }
 .notif-panel-header{
-  padding: 12px 16px;
-  font-weight: 600; color: var(--text-bright);
+  padding: 14px 18px;
+  font-family: var(--font-display);
+  font-size: 1.05rem; font-weight: 600; color: var(--text-bright);
   border-bottom: 1px solid var(--border);
 }
 .notif-panel-list{ display: flex; flex-direction: column; }
 .notif-item{
-  display: flex; align-items: flex-start; gap: 10px;
+  display: flex; flex-direction: column; gap: 2px;
   width: 100%; text-align: left;
-  padding: 12px 16px;
+  padding: 12px 18px;
   background: none; border: none; border-bottom: 1px solid var(--border);
-  color: var(--text-secondary); font-size: .88rem; line-height: 1.4;
   cursor: pointer;
+  transition: background .15s ease;
 }
 .notif-item:last-child{ border-bottom: none; }
 .notif-item:hover{ background: var(--tint); }
-.notif-item-icon{ flex-shrink: 0; font-size: 1rem; }
-.notif-item-ending .notif-item-text{ color: var(--danger); }
-.notif-item-new .notif-item-text{ color: var(--gold-dim); }
-.notif-empty{ padding: 20px 16px; color: var(--text-muted); font-size: .88rem; text-align: center; }
+.notif-item-tag{
+  font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-muted);
+}
+.notif-item-ending .notif-item-tag{ color: var(--danger); }
+.notif-item-new .notif-item-tag{ color: var(--gold-dim); }
+.notif-item-name{
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem; font-weight: 500; color: var(--text-bright);
+  line-height: 1.3;
+}
+.notif-item-desc{ font-size: .82rem; color: var(--text-secondary); }
+.notif-empty{ padding: 24px 18px; color: var(--text-muted); font-size: .88rem; text-align: center; }
 
 @media (max-width: 640px){
-  .notif-panel{ width: min(320px, 88vw); left: auto; right: 0; }
+  .notif-panel{ width: min(340px, 88vw); left: auto; right: 0; }
 }
 
 /* Giriş/kayıt basarili olunca "girişin başarılı" net biçimde görünsün diye --

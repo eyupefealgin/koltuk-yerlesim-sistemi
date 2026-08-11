@@ -215,7 +215,7 @@ const NOTIF_NEW_WINDOW_DAYS = 3;      // bu kadar gün içinde eklenmiş etkinli
 const NOTIF_UPCOMING_WINDOW_DAYS = 3; // etkinliğe bu kadar gün veya daha az kaldıysa "yaklaşan"
 const NOTIF_SOLDOUT_PCT = 90;         // doluluk bu yüzdeyi geçtiyse "bitmek üzere"
 const NOTIF_TYPE_PRIORITY = { ending: 0, new: 1, upcoming: 2 };
-const NOTIF_TYPE_ICON = { ending: '⚠️', new: '🆕', upcoming: '⏳' };
+const NOTIF_TYPE_TAG = { ending: 'Son Günler', new: 'Yeni', upcoming: 'Yaklaşan' };
 
 const notifBellBtn = document.getElementById('notifBellBtn');
 const notifBadge = document.getElementById('notifBadge');
@@ -239,7 +239,7 @@ function computeNotifications(){
     if(ev.created_at){
       const ageMs = now - new Date(ev.created_at).getTime();
       if(ageMs >= 0 && ageMs <= NOTIF_NEW_WINDOW_DAYS * 86400000){
-        items.push({ type: 'new', ev, sortKey: ageMs, text: `Yeni etkinlik: "${ev.name}"` });
+        items.push({ type: 'new', ev, sortKey: ageMs, desc: 'Az önce eklendi.' });
       }
     }
 
@@ -248,11 +248,11 @@ function computeNotifications(){
 
     const { pct } = computeOccupancy(ev);
     if(days === 0){
-      items.push({ type: 'ending', ev, sortKey: 0, text: `"${ev.name}" bugün! Son biletler için acele et.` });
+      items.push({ type: 'ending', ev, sortKey: 0, desc: 'Bugün oynuyor — son biletler için acele et.' });
     } else if(pct >= NOTIF_SOLDOUT_PCT){
-      items.push({ type: 'ending', ev, sortKey: days, text: `"${ev.name}" tükenmek üzere — %${pct} dolu.` });
+      items.push({ type: 'ending', ev, sortKey: days, desc: `%${pct} dolu — tükenmek üzere.` });
     } else if(days <= NOTIF_UPCOMING_WINDOW_DAYS){
-      items.push({ type: 'upcoming', ev, sortKey: days, text: `"${ev.name}" ${days} gün sonra (${formatEventDate(ev.event_date)}).` });
+      items.push({ type: 'upcoming', ev, sortKey: days, desc: `${days} gün sonra · ${formatEventDate(ev.event_date)}` });
     }
   });
 
@@ -280,17 +280,15 @@ function renderNotifications(){
     const row = document.createElement('button');
     row.type = 'button';
     row.className = `notif-item notif-item-${item.type}`;
+    row.innerHTML = `
+      <span class="notif-item-tag"></span>
+      <strong class="notif-item-name"></strong>
+      <span class="notif-item-desc"></span>
+    `;
+    row.querySelector('.notif-item-tag').textContent = NOTIF_TYPE_TAG[item.type];
+    row.querySelector('.notif-item-name').textContent = item.ev.name;
+    row.querySelector('.notif-item-desc').textContent = item.desc;
 
-    const icon = document.createElement('span');
-    icon.className = 'notif-item-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = NOTIF_TYPE_ICON[item.type];
-
-    const text = document.createElement('span');
-    text.className = 'notif-item-text';
-    text.textContent = item.text;
-
-    row.append(icon, text);
     row.addEventListener('click', () => {
       closeNotifPanel();
       enterEvent(item.ev.id, item.ev.name);
