@@ -39,6 +39,39 @@ function computeSeatLabelFor(idx, eventInfo, seatPos){
 // tutuyoruz ki iptal RPC'si hangi etkinlik/koltuk olduğunu bilsin.
 let ticketCancelContext = null;
 
+// qrcode.min.js (~12KB) sadece bilet görüntülenirken gerekiyor (kamerayla
+// check-in native BarcodeDetector kullanıyor, bu kütüphaneye ihtiyacı yok)
+// — bu yüzden sayfa yüklenirken hiç indirilmiyor, ilk bilet görüntülenince
+// bir kere indiriliyor ve sonrasında önbellekten geliyor.
+let qrcodeLoadPromise = null;
+function ensureQrcodeLoaded(){
+  if(typeof qrcode === 'function') return Promise.resolve();
+  if(qrcodeLoadPromise) return qrcodeLoadPromise;
+  qrcodeLoadPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'qrcode.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => resolve(); // aşağıdaki kod-metni fallback'i zaten var
+    document.head.appendChild(script);
+  });
+  return qrcodeLoadPromise;
+}
+
+async function renderTicketQr(qrHolder, ticketCode){
+  qrHolder.dataset.pending = ticketCode;
+  await ensureQrcodeLoaded();
+  if(qrHolder.dataset.pending !== ticketCode) return; // arada başka bilet açılmış
+  if(typeof qrcode !== 'function'){ qrHolder.textContent = ticketCode; return; }
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(ticketCode);
+    qr.make();
+    qrHolder.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
+  } catch(err){
+    qrHolder.textContent = ticketCode;
+  }
+}
+
 function showTicketView(idx, sale, eventInfo, seatPos){
   document.getElementById('ticketEventName').textContent = eventInfo ? eventInfo.name : (currentEventNameBadge.textContent || '');
   // eventInfo verilmişse (Biletim Var akışı) o etkinliğin kendi listesine
@@ -78,15 +111,8 @@ function showTicketView(idx, sale, eventInfo, seatPos){
 
   const qrHolder = document.getElementById('ticketQrHolder');
   qrHolder.innerHTML = '';
-  if(sale.ticketCode && typeof qrcode === 'function'){
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(sale.ticketCode);
-      qr.make();
-      qrHolder.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
-    } catch(err){
-      qrHolder.textContent = sale.ticketCode;
-    }
+  if(sale.ticketCode){
+    renderTicketQr(qrHolder, sale.ticketCode);
   }
 
   // İptal butonu sadece "Biletim Var" akışında (ticketCancelContext dolu) ve
