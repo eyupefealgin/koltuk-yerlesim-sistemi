@@ -93,6 +93,25 @@ function renderHeroMeta(list){
   el.hidden = false;
 }
 
+// Etkinlik listesindeki afiş yalnızca 54x54 (mobilde 44x44) bir küçük resim
+// olarak gösteriliyor — admin genelde Unsplash gibi bir siteden kopyaladığı,
+// çok daha büyük çözünürlüklü (600px+) bir link yapıştırıyor, o da her
+// ziyaretçide gereksiz yere onlarca KB indiriyor. Bilinen CDN'lerde boyut
+// parametresini küçük bir thumbnail'a indiriyoruz; tanımadığımız bir adres
+// olduğunda dokunmadan olduğu gibi geçiyoruz.
+function posterThumbnailUrl(url){
+  try {
+    const u = new URL(url);
+    if(u.hostname.endsWith('unsplash.com')){
+      u.searchParams.set('w', '120');
+      u.searchParams.set('q', '60');
+      u.searchParams.delete('h');
+      return u.toString();
+    }
+  } catch { /* geçersizse safeImageUrl zaten elemiş olurdu */ }
+  return url;
+}
+
 function renderEventList(){
   eventGridEl.innerHTML = '';
   eventEmptyHint.hidden = events.length > 0;
@@ -155,7 +174,7 @@ function renderEventList(){
     if(poster){
       const img = document.createElement('img');
       img.className = 'program-poster';
-      img.src = poster;
+      img.src = posterThumbnailUrl(poster);
       img.alt = '';
       img.loading = 'lazy';
       // Kırık/erişilemeyen görsel satırı bozmasın diye kendini gizlesin.
