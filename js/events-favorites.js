@@ -203,7 +203,121 @@ function renderEventList(){
 
     eventGridEl.appendChild(row);
   });
+
+  renderNotifications();
 }
+
+// ===== Bildirimler (yeni / yaklaşan / bitmek üzere etkinlik) =====
+// Ayrı bir tablo/kanal yok — zaten bellekte duran `events` dizisinden anlık
+// hesaplanıyor, renderEventList() her çalıştığında (yükleme, realtime,
+// filtre, favori) otomatik güncelleniyor.
+const NOTIF_NEW_WINDOW_DAYS = 3;      // bu kadar gün içinde eklenmiş etkinlik "yeni" sayılır
+const NOTIF_UPCOMING_WINDOW_DAYS = 3; // etkinliğe bu kadar gün veya daha az kaldıysa "yaklaşan"
+const NOTIF_SOLDOUT_PCT = 90;         // doluluk bu yüzdeyi geçtiyse "bitmek üzere"
+const NOTIF_TYPE_PRIORITY = { ending: 0, new: 1, upcoming: 2 };
+const NOTIF_TYPE_ICON = { ending: '⚠️', new: '🆕', upcoming: '⏳' };
+
+const notifBellBtn = document.getElementById('notifBellBtn');
+const notifBadge = document.getElementById('notifBadge');
+const notifPanel = document.getElementById('notifPanel');
+const notifPanelList = document.getElementById('notifPanelList');
+
+function daysUntilEvent(dateStr){
+  if(!dateStr) return null;
+  const today = new Date(`${todayDateStr()}T00:00:00`);
+  const target = new Date(`${dateStr}T00:00:00`);
+  return Math.round((target - today) / 86400000);
+}
+
+function computeNotifications(){
+  const items = [];
+  const now = Date.now();
+
+  events.forEach(ev => {
+    if(ev.status !== 'active') return;
+
+    if(ev.created_at){
+      const ageMs = now - new Date(ev.created_at).getTime();
+      if(ageMs >= 0 && ageMs <= NOTIF_NEW_WINDOW_DAYS * 86400000){
+        items.push({ type: 'new', ev, sortKey: ageMs, text: `Yeni etkinlik: "${ev.name}"` });
+      }
+    }
+
+    const days = daysUntilEvent(ev.event_date);
+    if(days === null || days < 0) return;
+
+    const { pct } = computeOccupancy(ev);
+    if(days === 0){
+      items.push({ type: 'ending', ev, sortKey: 0, text: `"${ev.name}" bugün! Son biletler için acele et.` });
+    } else if(pct >= NOTIF_SOLDOUT_PCT){
+      items.push({ type: 'ending', ev, sortKey: days, text: `"${ev.name}" tükenmek üzere — %${pct} dolu.` });
+    } else if(days <= NOTIF_UPCOMING_WINDOW_DAYS){
+      items.push({ type: 'upcoming', ev, sortKey: days, text: `"${ev.name}" ${days} gün sonra (${formatEventDate(ev.event_date)}).` });
+    }
+  });
+
+  items.sort((a, b) => (NOTIF_TYPE_PRIORITY[a.type] - NOTIF_TYPE_PRIORITY[b.type]) || (a.sortKey - b.sortKey));
+  return items;
+}
+
+function renderNotifications(){
+  if(!notifBellBtn) return;
+  const items = computeNotifications();
+
+  if(notifBadge){
+    notifBadge.textContent = items.length > 9 ? '9+' : String(items.length);
+    notifBadge.hidden = items.length === 0;
+  }
+
+  if(!notifPanelList) return;
+  notifPanelList.innerHTML = '';
+  if(!items.length){
+    notifPanelList.innerHTML = '<p class="notif-empty">Yeni bildirim yok.</p>';
+    return;
+  }
+
+  items.forEach(item => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `notif-item notif-item-${item.type}`;
+
+    const icon = document.createElement('span');
+    icon.className = 'notif-item-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = NOTIF_TYPE_ICON[item.type];
+
+    const text = document.createElement('span');
+    text.className = 'notif-item-text';
+    text.textContent = item.text;
+
+    row.append(icon, text);
+    row.addEventListener('click', () => {
+      closeNotifPanel();
+      enterEvent(item.ev.id, item.ev.name);
+    });
+    notifPanelList.appendChild(row);
+  });
+}
+
+function openNotifPanel(){
+  if(!notifPanel) return;
+  renderNotifications();
+  notifPanel.hidden = false;
+}
+function closeNotifPanel(){
+  if(notifPanel) notifPanel.hidden = true;
+}
+
+notifBellBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if(notifPanel.hidden) openNotifPanel();
+  else closeNotifPanel();
+});
+document.addEventListener('click', (e) => {
+  if(!notifPanel || notifPanel.hidden) return;
+  if(notifPanel.contains(e.target) || notifBellBtn.contains(e.target)) return;
+  closeNotifPanel();
+});
 
 async function loadEvents(){
   try {

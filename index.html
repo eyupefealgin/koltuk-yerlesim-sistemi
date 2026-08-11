@@ -88,6 +88,15 @@
   <div class="event-list-header">
     <h2>Etkinlikler</h2>
     <div class="event-list-header-actions">
+      <div class="notif-wrap">
+        <button class="btn btn-ghost-gold notif-bell" id="notifBellBtn" type="button" aria-label="Bildirimler">
+          🔔<span class="notif-badge" id="notifBadge" hidden>0</span>
+        </button>
+        <div class="notif-panel" id="notifPanel" hidden>
+          <div class="notif-panel-header">Bildirimler</div>
+          <div class="notif-panel-list" id="notifPanelList"></div>
+        </div>
+      </div>
       <button class="btn btn-ghost-gold" id="openMyTicketBtn" type="button">Biletim Var</button>
       <button class="btn btn-ghost-gold" id="emailLoginBtn" type="button">Giriş Yap</button>
       <button class="btn btn-ghost" id="topbarLogoutBtn" type="button" hidden>Çıkış</button>
