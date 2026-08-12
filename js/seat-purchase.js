@@ -25,6 +25,13 @@ function renderModalTierButtons(){
       : `${tier.label} (${price}₺)`;
     btn.addEventListener('click', () => {
       modalTier = tier.id;
+      // Giriş yapmış misafirin ad soyadı zaten kayıt sırasında alındı
+      // (bkz. auth.js verifiedName) — burada tekrar sorulmuyor, doğrudan
+      // ödeme adımına geçiliyor.
+      if(currentRole === 'guest' && verifiedName){
+        proceedToPayment(verifiedName, verifiedEmail || '');
+        return;
+      }
       buyerNameInput.value = '';
       if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
       buyerNoteText.textContent = currentRole === 'guest'
@@ -376,6 +383,10 @@ async function openBlockSeatModal(pos){
 // gösterilmiyor (bkz. openSeatModal'daki aynı yaklaşım).
 function openBuyerPanelForBlockSeat(){
   modalGender = 'male';
+  if(currentRole === 'guest' && verifiedName){
+    proceedToPayment(verifiedName, verifiedEmail || '');
+    return;
+  }
   buyerNameInput.value = '';
   if(buyerEmailInput) buyerEmailInput.value = verifiedEmail || '';
   buyerNoteText.textContent = currentRole === 'guest'
@@ -584,14 +595,13 @@ function updatePaymentButtonsEnabled(){
   paymentChoiceButtons.forEach(btn => { btn.disabled = !enabled; });
 }
 
-buyerContinueBtn.addEventListener('click', () => {
-  const name = buyerNameInput.value.trim();
-  if(currentRole === 'guest' && !name){
-    toast('Lütfen ad soyad gir.');
-    return;
-  }
+// Alıcı bilgisi adımından ödeme adımına geçiş — hem manuel "Devam Et"
+// tıklamasından hem de giriş yapmış misafir için ad soyad zaten bilindiğinde
+// bu paneli hiç göstermeden otomatik çağrılıyor (bkz. renderModalTierButtons/
+// openBuyerPanelForBlockSeat).
+function proceedToPayment(name, email){
   modalBuyerName = name;
-  modalBuyerEmail = (buyerEmailInput?.value || '').trim();
+  modalBuyerEmail = email;
   const isGuest = currentRole === 'guest';
   paymentDisclaimerEl.hidden = !isGuest;
   legalConsentRow.hidden = !isGuest;
@@ -602,6 +612,15 @@ buyerContinueBtn.addEventListener('click', () => {
   updatePriceSummary();
   updatePaymentButtonsEnabled();
   showModalPanel('payment');
+}
+
+buyerContinueBtn.addEventListener('click', () => {
+  const name = buyerNameInput.value.trim();
+  if(currentRole === 'guest' && !name){
+    toast('Lütfen ad soyad gir.');
+    return;
+  }
+  proceedToPayment(name, (buyerEmailInput?.value || '').trim());
 });
 legalConsentCheckbox.addEventListener('change', updatePaymentButtonsEnabled);
 buyerNameInput.addEventListener('keydown', (e) => {

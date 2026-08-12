@@ -5,7 +5,17 @@
 // diğer sayfalarda null olduğu için hepsi ?. ile erişiliyor.
 let verifiedEmail = null;
 let verifiedUserId = null;    // favorites tablosunun user_id'si için (bkz. loadFavorites/toggleFavorite)
+let verifiedName = null;      // Kayıt Ol'da alınan ad soyad (bkz. signUp options.data) — bilet alırken tekrar sorulmasın diye
 let favoriteEventIds = new Set();
+
+// signUp() sırasında user_metadata.first_name/last_name olarak kaydedildi
+// (bkz. emailLoginSendBtn) — hem yeni kayıt hem de sonraki her girişte
+// (giriş, sayfa açılışında oturum geri yükleme) buradan okunuyor.
+function fullNameFromUser(user){
+  const meta = user?.user_metadata || {};
+  const combined = `${(meta.first_name || '').trim()} ${(meta.last_name || '').trim()}`.trim();
+  return combined || null;
+}
 const topbarLogoutBtn = document.getElementById('topbarLogoutBtn');
 
 // Üst çubukta "Biletlerim"in yanında ayrı bir "Çıkış" butonu -- modalı
@@ -22,6 +32,7 @@ async function performEmailLogout(){
   if(supabaseClient) await supabaseClient.auth.signOut();
   verifiedEmail = null;
   verifiedUserId = null;
+  verifiedName = null;
   favoriteEventIds = new Set();
   updateEmailLoginBtnLabel();
   closeEmailLoginModal();
@@ -219,6 +230,7 @@ emailLoginSendBtn?.addEventListener('click', async () => {
 
     verifiedEmail = data.user?.email || email;
     verifiedUserId = data.user?.id || null;
+    verifiedName = fullNameFromUser(data.user);
     updateEmailLoginBtnLabel();
     loadFavorites();
     if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';
@@ -316,6 +328,7 @@ supabaseClient?.auth.onAuthStateChange((event, session) => {
   if(event === 'SIGNED_IN' && emailLoginOverlay && !authSelfInitiated && session?.user?.email){
     verifiedEmail = session.user.email;
     verifiedUserId = session.user.id;
+    verifiedName = fullNameFromUser(session.user);
     updateEmailLoginBtnLabel();
     loadFavorites();
     toast(`E-posta onaylandı — ${verifiedEmail} olarak giriş yaptın.`);
@@ -343,6 +356,7 @@ resetConfirmBtn?.addEventListener('click', async () => {
 
     verifiedEmail = data.user?.email || verifiedEmail;
     verifiedUserId = data.user?.id || verifiedUserId;
+    verifiedName = fullNameFromUser(data.user) || verifiedName;
     updateEmailLoginBtnLabel();
     loadFavorites();
     if(emailLoginTitleEl) emailLoginTitleEl.textContent = 'Biletlerim';

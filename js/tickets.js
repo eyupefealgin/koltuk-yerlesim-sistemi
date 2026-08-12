@@ -39,6 +39,60 @@ function computeSeatLabelFor(idx, eventInfo, seatPos){
 // tutuyoruz ki iptal RPC'si hangi etkinlik/koltuk olduğunu bilsin.
 let ticketCancelContext = null;
 
+// QR kod artık salt bilet kodu değil, misafir sayfasına o kodu sorgulayan
+// bir LİNK taşıyor — telefonun kendi kamera uygulamasıyla okutulduğunda
+// düz metin göstermek yerine biletin kendi güzel görünümünü açıyor (bkz.
+// app-bootstrap.js init() içindeki showTicketFromCode çağrısı). Personelin
+// check-in tarayıcısı (bkz. startScanner) de bu linkten kodu ayıklıyor,
+// eski (düz kod) QR'larla geriye dönük uyumlu kalıyor.
+const TICKET_URL_PARAM = 'bilet';
+
+function ticketQrUrl(ticketCode){
+  return `${AUTH_REDIRECT_URL}?${TICKET_URL_PARAM}=${encodeURIComponent(ticketCode)}`;
+}
+
+// Kameradan okunan ham metin bir link olabilir (yeni QR'lar) ya da düz kod
+// (eski QR'lar / elle girilmiş) — ikisini de kabul ediyoruz.
+function extractScannedTicketCode(raw){
+  try {
+    const url = new URL(raw);
+    const code = url.searchParams.get(TICKET_URL_PARAM);
+    if(code) return code;
+  } catch { /* gecerli bir URL degil, dogrudan kod olarak kullan */ }
+  return raw;
+}
+
+function ticketCodeFromPageUrl(){
+  return new URL(window.location.href).searchParams.get(TICKET_URL_PARAM);
+}
+
+// QR linkiyle (ör. telefon kamerasıyla okutunca) doğrudan açılan bilet
+// görünümü — "Biletim Var" akışıyla (findMyTicket) aynı RPC'yi kullanır,
+// sadece kod bir input'tan değil URL'den geliyor. Bulunamazsa/hata olursa
+// sessizce hiçbir şey göstermiyoruz (misafir zaten normal etkinlik listesini
+// görüyor olur).
+async function showTicketFromCode(code){
+  if(!code || !supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.rpc('find_ticket_by_code', { p_code: code });
+    if(error) throw error;
+    const found = Array.isArray(data) ? data[0] : data;
+    if(!found){
+      toast('Bilet bulunamadı.');
+      return;
+    }
+    const ev = {
+      name: found.event_name, venue_type: found.event_venue_type,
+      cols: found.event_cols, rows: found.event_rows, accessible_seats: found.event_accessible_seats,
+    };
+    ticketCancelContext = { eventId: found.event_id, idx: found.seat_idx, ticketCode: code, venueType: ev.venue_type, seatPos: found.seat_pos };
+    showTicketView(found.seat_idx, found.sale, ev, found.seat_pos);
+  } catch(err){
+    console.warn('QR ile bilet aranamadı.', err);
+    toast('Bilet aranamadı — buluta bağlanılamadı.');
+  }
+}
+
 // qrcode.min.js (~12KB) sadece bilet görüntülenirken gerekiyor (kamerayla
 // check-in native BarcodeDetector kullanıyor, bu kütüphaneye ihtiyacı yok)
 // — bu yüzden sayfa yüklenirken hiç indirilmiyor, ilk bilet görüntülenince
@@ -64,7 +118,7 @@ async function renderTicketQr(qrHolder, ticketCode){
   if(typeof qrcode !== 'function'){ qrHolder.textContent = ticketCode; return; }
   try {
     const qr = qrcode(0, 'M');
-    qr.addData(ticketCode);
+    qr.addData(ticketQrUrl(ticketCode));
     qr.make();
     qrHolder.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
   } catch(err){
@@ -245,7 +299,7 @@ async function startScanner(){
       const codes = await detector.detect(scannerVideo);
       const value = codes && codes.length ? String(codes[0].rawValue || '').trim() : '';
       if(value){
-        checkinCodeInput.value = value;
+        checkinCodeInput.value = extractScannedTicketCode(value);
         stopScanner();
         verifyTicket();
         return;

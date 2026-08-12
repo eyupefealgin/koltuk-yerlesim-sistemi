@@ -11,6 +11,7 @@
     if(data.session?.user?.email){
       verifiedEmail = data.session.user.email;
       verifiedUserId = data.session.user.id;
+      verifiedName = fullNameFromUser(data.session.user);
       updateEmailLoginBtnLabel();
       loadFavorites();
     }
@@ -310,5 +311,15 @@ logoutBtn.addEventListener('click', async () => {
     }
   } else {
     enterApp('guest');
+    // QR kodu telefonun kendi kamerasıyla okutulduğunda düz metin göstermek
+    // yerine buraya (?bilet=<kod>) düşer — biletin kendi görünümünü otomatik
+    // açıyoruz (bkz. tickets.js showTicketFromCode/ticketQrUrl).
+    const ticketCode = ticketCodeFromPageUrl();
+    if(ticketCode){
+      showTicketFromCode(ticketCode);
+      const url = new URL(window.location.href);
+      url.searchParams.delete(TICKET_URL_PARAM);
+      history.replaceState(null, '', url);
+    }
   }
 })();
