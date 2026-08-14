@@ -16,6 +16,7 @@ const createEventOverlay = document.getElementById('createEventOverlay');
 const createEventClose = document.getElementById('createEventClose');
 const newEventName = document.getElementById('newEventName');
 const newEventDate = document.getElementById('newEventDate');
+const newEventEndDate = document.getElementById('newEventEndDate');
 const newEventVenue = document.getElementById('newEventVenue');
 const newEventCols = document.getElementById('newEventCols');
 const newEventRows = document.getElementById('newEventRows');
@@ -96,6 +97,10 @@ const posterPreview = document.getElementById('posterPreview');
 const eventNoteInput = document.getElementById('eventNoteInput');
 const saveNoteBtn = document.getElementById('saveNoteBtn');
 const eventNoteDisplay = document.getElementById('eventNoteDisplay');
+
+// Bitiş tarihi (oluştururken de girilebilir, sonradan burada değiştirilebilir)
+const eventEndDateInput = document.getElementById('eventEndDateInput');
+const saveEndDateBtn = document.getElementById('saveEndDateBtn');
 
 // Etkinlik başına ödeme yöntemi seçimi (Kart/Nakit) — bkz. paymentChoiceButtons
 const paymentMethodKartCheckbox = document.getElementById('paymentMethodKart');
@@ -215,6 +220,7 @@ let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.
 let PAYMENT_METHODS = ['kart', 'nakit']; // geçerli etkinliğin kabul ettiği ödeme yöntemleri (events.payment_methods)
 let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
 let EVENT_NOTE = null;         // geçerli etkinliğin notu (events.note) — herkese açık
+let EVENT_END_DATE = null;     // geçerli etkinliğin bitiş tarihi (events.end_date)
 const DEFAULT_DYNAMIC = { enabled: false, threshold: 80, increase: 10 };
 let DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC }; // events.dynamic_pricing
 

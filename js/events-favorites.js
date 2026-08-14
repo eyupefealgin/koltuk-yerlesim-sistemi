@@ -199,7 +199,7 @@ function renderEventList(){
     row.querySelector('.program-status-badge').textContent = statusLabel;
     row.querySelector('.program-status-badge').dataset.status = ev.status;
     row.querySelector('h3').textContent = ev.name;
-    row.querySelector('.program-date-full').textContent = formatEventDate(ev.event_date);
+    row.querySelector('.program-date-full').textContent = formatEventDateRange(ev.event_date, ev.end_date);
     row.querySelector('.event-archive-btn').textContent = ev.status === 'archived' ? 'Aktifleştir' : 'Arşivle';
     if(typeof ev.note === 'string' && ev.note.trim()){
       const noteEl = row.querySelector('.program-note');
@@ -436,6 +436,7 @@ newEventLimitedCheckbox.addEventListener('change', () => {
 function openCreateEventModal(){
   newEventName.value = '';
   newEventDate.value = '';
+  newEventEndDate.value = '';
   newEventPoster.value = '';
   newEventVenue.value = 'sinema';
   newEventCols.value = 10;
@@ -461,6 +462,11 @@ async function createEvent(){
     return;
   }
   const date = newEventDate.value || null;
+  const endDate = newEventEndDate.value || null;
+  if(date && endDate && endDate < date){
+    toast('Bitiş tarihi, başlangıç tarihinden önce olamaz.');
+    return;
+  }
   const vType = newEventVenue.value;
 
   // Genel Etkinlik'te odeme adimi yok, secimi de yok sayiliyor — diger
@@ -510,7 +516,7 @@ async function createEvent(){
   submitCreateEventBtn.disabled = true;
   try {
     const { data, error } = await supabaseClient.from('events').insert({
-      name, event_date: date, venue_type: vType,
+      name, event_date: date, end_date: endDate, venue_type: vType,
       cols: evCols, rows: evRows, seat_states: encodeSeatStates(states),
       tiers: evTiers, general_capacity: evGeneralCapacity,
       poster_url: safeImageUrl(newEventPoster.value), status: 'active',

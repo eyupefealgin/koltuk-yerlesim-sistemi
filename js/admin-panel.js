@@ -298,6 +298,33 @@ saveNoteBtn.addEventListener('click', async () => {
   toast(note ? 'Not kaydedildi.' : 'Not kaldırıldı.');
 });
 
+// Bitiş tarihi — etkinlik oluşturulurken de girilebiliyor (bkz. createEvent),
+// burada sonradan değiştirilebiliyor/kaldırılabiliyor.
+function renderEndDateEditor(){
+  eventEndDateInput.value = EVENT_END_DATE || '';
+}
+
+saveEndDateBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const endDate = eventEndDateInput.value || null;
+  const currentEvent = events.find(e => e.id === currentEventId);
+  if(endDate && currentEvent?.event_date && endDate < currentEvent.event_date){
+    toast('Bitiş tarihi, başlangıç tarihinden önce olamaz.');
+    return;
+  }
+
+  saveEndDateBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    end_date: endDate, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveEndDateBtn.disabled = false;
+
+  if(error){ toast('Bitiş tarihi kaydedilemedi.'); return; }
+  EVENT_END_DATE = endDate;
+  renderEndDateEditor();
+  toast(endDate ? 'Bitiş tarihi kaydedildi.' : 'Bitiş tarihi kaldırıldı.');
+});
+
 // Etkinlik başına ödeme yöntemi seçimi — misafirin satın alma ekranındaki
 // Kart/Nakit butonlarından sadece burada seçili olanlar çıkar (bkz.
 // paymentChoiceButtons, modal-payment-panel'de sabit HTML olarak duruyor,
@@ -319,7 +346,9 @@ savePaymentMethodsBtn.addEventListener('click', async () => {
   const methods = [];
   if(paymentMethodKartCheckbox.checked) methods.push('kart');
   if(paymentMethodNakitCheckbox.checked) methods.push('nakit');
-  if(!methods.length){
+  // Genel Etkinlik'te odeme adimi yok, secimi de yok sayiliyor — diger
+  // turlerde en az bir yontem secili olmali.
+  if(venueType !== 'genel' && !methods.length){
     toast('En az bir ödeme yöntemi seçili olmalı.');
     return;
   }

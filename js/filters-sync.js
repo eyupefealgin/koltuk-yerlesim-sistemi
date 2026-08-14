@@ -239,6 +239,7 @@ function applySeatsPayload(row){
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   POSTER_URL = safeImageUrl(row.poster_url);
   EVENT_NOTE = typeof row.note === 'string' && row.note.trim() ? row.note : null;
+  EVENT_END_DATE = row.end_date || null;
   PAYMENT_METHODS = Array.isArray(row.payment_methods) && row.payment_methods.length ? row.payment_methods : ['kart', 'nakit'];
   // general_capacity sütunda NULL = "Sınırlı Bilet" kapalı, yani sınırsız
   // katılım (bkz. createEvent/renderGeneralCapacityEditor). Bellekte Infinity
@@ -266,6 +267,7 @@ function applySeatsPayload(row){
   renderDiscountList();
   renderPosterEditor();
   renderNoteEditor();
+  renderEndDateEditor();
   renderPaymentMethodsEditor();
   renderDynamicPricingEditor();
 
@@ -379,6 +381,23 @@ function formatEventDate(dateStr){
     return new Date(`${dateStr}T00:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
   } catch {
     return dateStr;
+  }
+}
+
+// Birden fazla gün süren etkinliklerde (ev.end_date dolu ve başlangıçtan
+// farklıysa) "10 Ağustos - 12 Ağustos 2026" gibi bir aralık gösterir.
+function formatEventDateRange(startStr, endStr){
+  if(!endStr || endStr === startStr) return formatEventDate(startStr);
+  if(!startStr) return formatEventDate(endStr);
+  try {
+    const start = new Date(`${startStr}T00:00:00`);
+    const end = new Date(`${endStr}T00:00:00`);
+    const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+    const startPart = start.toLocaleDateString('tr-TR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'long' });
+    const endPart = end.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `${startPart} - ${endPart}`;
+  } catch {
+    return formatEventDate(startStr);
   }
 }
 

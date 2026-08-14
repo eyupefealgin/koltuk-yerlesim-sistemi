@@ -231,6 +231,14 @@
     </div>
 
     <div class="ticket-prices">
+      <span class="ticket-prices-label">Bitiş Tarihi:</span>
+      <div class="poster-row">
+        <input type="date" id="eventEndDateInput">
+        <button class="btn btn-primary btn-sm" id="saveEndDateBtn" type="button">Kaydet</button>
+      </div>
+    </div>
+
+    <div class="ticket-prices">
       <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
       <div class="payment-method-row">
         <label class="dynamic-toggle"><input type="checkbox" id="paymentMethodKart"><span>Kart</span></label>
@@ -418,6 +426,10 @@
       <label class="field">
         <span>Tarih</span>
         <input type="date" id="newEventDate">
+      </label>
+      <label class="field">
+        <span>Bitiş Tarihi (opsiyonel, birden fazla gün süren etkinlikler için)</span>
+        <input type="date" id="newEventEndDate">
       </label>
       <label class="field">
         <span>Afiş Görseli URL (opsiyonel)</span>

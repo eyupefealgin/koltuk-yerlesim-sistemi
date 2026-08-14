@@ -17,6 +17,7 @@ create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   event_date date,
+  end_date date,
   venue_type text not null default 'sinema',
   cols int not null default 10,
   rows int not null default 8,
@@ -29,6 +30,7 @@ create table if not exists events (
 
 -- Tablo daha once (tiers sutunu olmadan) olusturulmus olabilir -- garanti olsun diye.
 alter table events add column if not exists tiers jsonb not null default '[]'::jsonb;
+alter table events add column if not exists end_date date;
 
 -- Satis verisi (etkinlik basina): kimin hangi koltugu ne kadara, hangi
 -- odeme yontemiyle aldigi + bilet kodu/check-in durumu. Sadece Yonetici/
