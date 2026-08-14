@@ -99,6 +99,8 @@ const saveNoteBtn = document.getElementById('saveNoteBtn');
 const eventNoteDisplay = document.getElementById('eventNoteDisplay');
 
 // Bitiş tarihi (oluştururken de girilebilir, sonradan burada değiştirilebilir)
+const eventStartDateInput = document.getElementById('eventStartDateInput');
+const saveStartDateBtn = document.getElementById('saveStartDateBtn');
 const eventEndDateInput = document.getElementById('eventEndDateInput');
 const saveEndDateBtn = document.getElementById('saveEndDateBtn');
 
@@ -230,6 +232,7 @@ let DISCOUNT_CODES = [];       // geçerli etkinliğin indirim kodları (events.
 let PAYMENT_METHODS = ['kart', 'nakit']; // geçerli etkinliğin kabul ettiği ödeme yöntemleri (events.payment_methods)
 let POSTER_URL = null;         // geçerli etkinliğin afiş görseli (events.poster_url)
 let EVENT_NOTE = null;         // geçerli etkinliğin notu (events.note) — herkese açık
+let EVENT_DATE = null;         // geçerli etkinliğin (başlangıç) tarihi (events.event_date)
 let EVENT_END_DATE = null;     // geçerli etkinliğin bitiş tarihi (events.end_date)
 const DEFAULT_DYNAMIC = { enabled: false, threshold: 80, increase: 10 };
 let DYNAMIC_PRICING = { ...DEFAULT_DYNAMIC }; // events.dynamic_pricing

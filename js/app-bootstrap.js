@@ -79,6 +79,7 @@ async function enterEvent(id, nameHint, skipUrl){
   DISCOUNT_CODES = [];
   POSTER_URL = null;
   EVENT_NOTE = null;
+  EVENT_DATE = null;
   EVENT_END_DATE = null;
   PAYMENT_METHODS = ['kart', 'nakit'];
   eventNoteDisplay.hidden = true;

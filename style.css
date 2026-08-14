@@ -1351,7 +1351,7 @@ select option{
   font-size: .88rem;
   font-weight: 500;
   box-shadow: var(--shadow-lg);
-  z-index: 30;
+  z-index: 70;
   animation: toast-in .25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .toast[hidden]{ display: none; }

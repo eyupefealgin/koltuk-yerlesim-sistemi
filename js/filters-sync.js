@@ -239,8 +239,14 @@ function applySeatsPayload(row){
   DISCOUNT_CODES = Array.isArray(row.discount_codes) ? row.discount_codes : [];
   POSTER_URL = safeImageUrl(row.poster_url);
   EVENT_NOTE = typeof row.note === 'string' && row.note.trim() ? row.note : null;
+  EVENT_DATE = row.event_date || null;
   EVENT_END_DATE = row.end_date || null;
-  PAYMENT_METHODS = Array.isArray(row.payment_methods) && row.payment_methods.length ? row.payment_methods : ['kart', 'nakit'];
+  // row.payment_methods === [] gecerli bir deger (Genel Etkinlik'te odeme
+  // adimi yok, bkz. createEvent) -- sadece hic array degilse (eski/eksik
+  // veri) varsayilana dusuluyor, .length'e bakip BOS diziyi de varsayilana
+  // cevirmek Genel Etkinlik'te kaydedilen "hicbiri" secimini sessizce
+  // Kart+Nakit'e geri donduruyordu.
+  PAYMENT_METHODS = Array.isArray(row.payment_methods) ? row.payment_methods : ['kart', 'nakit'];
   // general_capacity sütunda NULL = "Sınırlı Bilet" kapalı, yani sınırsız
   // katılım (bkz. createEvent/renderGeneralCapacityEditor). Bellekte Infinity
   // olarak tutuluyor — poolBlocks/joinGeneralEvent/renderSeatVisual'daki tüm
@@ -268,6 +274,7 @@ function applySeatsPayload(row){
   renderDiscountList();
   renderPosterEditor();
   renderNoteEditor();
+  renderStartDateEditor();
   renderEndDateEditor();
   renderGeneralMaxPerPurchaseEditor();
   renderPaymentMethodsEditor();

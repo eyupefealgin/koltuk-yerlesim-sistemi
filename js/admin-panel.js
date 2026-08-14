@@ -331,6 +331,34 @@ saveNoteBtn.addEventListener('click', async () => {
 
 // Bitiş tarihi — etkinlik oluşturulurken de girilebiliyor (bkz. createEvent),
 // burada sonradan değiştirilebiliyor/kaldırılabiliyor.
+// Tarih (başlangıç) — bitmiş/geçmiş bir etkinlik de dahil, admin istediği
+// zaman değiştirebilir (ör. etkinliği ileri bir tarihe alıp "devam
+// ettirmek" için) — isPastEvent() event_date'e baktığı için tarih ileri
+// alınınca etkinlik otomatik olarak "Yaklaşan"a geri döner.
+function renderStartDateEditor(){
+  eventStartDateInput.value = EVENT_DATE || '';
+}
+
+saveStartDateBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  const startDate = eventStartDateInput.value || null;
+  if(startDate && EVENT_END_DATE && EVENT_END_DATE < startDate){
+    toast('Başlangıç tarihi, bitiş tarihinden sonra olamaz.');
+    return;
+  }
+
+  saveStartDateBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    event_date: startDate, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveStartDateBtn.disabled = false;
+
+  if(error){ toast('Tarih kaydedilemedi.'); return; }
+  EVENT_DATE = startDate;
+  renderStartDateEditor();
+  toast('Tarih kaydedildi.');
+});
+
 function renderEndDateEditor(){
   eventEndDateInput.value = EVENT_END_DATE || '';
 }
@@ -338,8 +366,7 @@ function renderEndDateEditor(){
 saveEndDateBtn.addEventListener('click', async () => {
   if(!supabaseClient || !currentEventId) return;
   const endDate = eventEndDateInput.value || null;
-  const currentEvent = events.find(e => e.id === currentEventId);
-  if(endDate && currentEvent?.event_date && endDate < currentEvent.event_date){
+  if(endDate && EVENT_DATE && endDate < EVENT_DATE){
     toast('Bitiş tarihi, başlangıç tarihinden önce olamaz.');
     return;
   }
