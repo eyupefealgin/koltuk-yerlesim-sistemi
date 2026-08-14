@@ -115,6 +115,8 @@ const newEventPaymentNakit = document.getElementById('newEventPaymentNakit');
 const newEventLimitedRow = document.getElementById('newEventLimitedRow');
 const newEventLimitedCheckbox = document.getElementById('newEventLimitedCheckbox');
 const newEventCapacityInput = document.getElementById('newEventCapacityInput');
+const newEventMaxPerPurchaseRow = document.getElementById('newEventMaxPerPurchaseRow');
+const newEventMaxPerPurchaseInput = document.getElementById('newEventMaxPerPurchaseInput');
 
 // Genel Etkinlik: tek ücretsiz giriş havuzunun kapasitesi + bilet türü/
 // fiyat (tierPanelSection) ve indirim kodu (discountPanelSection) panelleri
@@ -125,6 +127,14 @@ const generalLimitedCheckbox = document.getElementById('generalLimitedCheckbox')
 const generalCapacityInputRow = document.getElementById('generalCapacityInputRow');
 const generalCapacityInput = document.getElementById('generalCapacityInput');
 const saveGeneralCapacityBtn = document.getElementById('saveGeneralCapacityBtn');
+const generalMaxPerPurchaseInput = document.getElementById('generalMaxPerPurchaseInput');
+const saveGeneralMaxPerPurchaseBtn = document.getElementById('saveGeneralMaxPerPurchaseBtn');
+
+// Genel Etkinlik: tek seferde katılım modalındaki miktar adımı (bkz.
+// joinGeneralEvent/seat-purchase.js) — confirm() yerine gerçek bir giriş.
+const generalQuantityInput = document.getElementById('generalQuantityInput');
+const generalQuantityNote = document.getElementById('generalQuantityNote');
+const generalQuantityContinueBtn = document.getElementById('generalQuantityContinueBtn');
 const tierPanelSection = document.getElementById('tierPanelSection');
 const discountPanelSection = document.getElementById('discountPanelSection');
 

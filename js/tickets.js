@@ -390,6 +390,25 @@ function forgetMyTicketLocally(ticketCode){
   } catch { /* localStorage kapalı olabilir — sessizce atla */ }
 }
 
+// Giriş yapmamış (anonim) bir misafirin ad soyadını da bu cihazda hatırlıyoruz
+// — verifiedName (bkz. auth.js) sadece giriş yapmış kullanıcı için doluyor,
+// anonim misafir de aynı cihazdan ikinci kez bilet alırken tekrar sorulmasın
+// diye bu ayrı bir localStorage anahtarında tutuluyor.
+const MY_BUYER_INFO_KEY = 'koltukYerlesim.myBuyerInfo';
+
+function rememberGuestBuyerInfo(name, email){
+  try {
+    localStorage.setItem(MY_BUYER_INFO_KEY, JSON.stringify({ name, email: email || '' }));
+  } catch { /* localStorage kapalı/dolu olabilir — sessizce atla */ }
+}
+
+function rememberedGuestBuyerInfo(){
+  try {
+    const raw = JSON.parse(localStorage.getItem(MY_BUYER_INFO_KEY) || 'null');
+    return raw && raw.name ? raw : null;
+  } catch { return null; }
+}
+
 function renderMyTicketHistory(){
   let list = [];
   try { list = JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || '[]'); } catch { /* yoksay */ }

@@ -282,6 +282,37 @@ saveGeneralCapacityBtn.addEventListener('click', async () => {
   toast('Kapasite kaydedildi.');
 });
 
+// Genel Etkinlik: tek seferde katılabilecek maksimum kişi sayısı — genel
+// kapasiteden (GENERAL_CAPACITY) ayrı, isteğe bağlı bir üst sınır (bkz.
+// joinGeneralEvent'teki generalQuantityInput doğrulaması).
+function renderGeneralMaxPerPurchaseEditor(){
+  generalMaxPerPurchaseInput.value = GENERAL_MAX_PER_PURCHASE || '';
+}
+
+saveGeneralMaxPerPurchaseBtn.addEventListener('click', async () => {
+  if(!supabaseClient || !currentEventId) return;
+  let maxPerPurchase = null;
+  if(generalMaxPerPurchaseInput.value){
+    const raw = Math.round(Number(generalMaxPerPurchaseInput.value));
+    if(!Number.isFinite(raw) || raw < 1){
+      toast('Geçerli bir sayı gir.');
+      return;
+    }
+    maxPerPurchase = raw;
+    generalMaxPerPurchaseInput.value = maxPerPurchase;
+  }
+
+  saveGeneralMaxPerPurchaseBtn.disabled = true;
+  const { error } = await supabaseClient.from('events').update({
+    general_max_per_purchase: maxPerPurchase, updated_at: new Date().toISOString(),
+  }).eq('id', currentEventId);
+  saveGeneralMaxPerPurchaseBtn.disabled = false;
+
+  if(error){ toast('Kaydedilemedi.'); return; }
+  GENERAL_MAX_PER_PURCHASE = maxPerPurchase;
+  toast(maxPerPurchase ? 'Sınır kaydedildi.' : 'Sınır kaldırıldı.');
+});
+
 saveNoteBtn.addEventListener('click', async () => {
   if(!supabaseClient || !currentEventId) return;
   const note = eventNoteInput.value.trim() || null;

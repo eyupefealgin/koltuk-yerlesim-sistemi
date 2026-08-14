@@ -418,6 +418,7 @@ function toggleNewEventDimsVisibility(){
   // "Sınırlı Bilet" sadece Genel Etkinlik'te anlamlı — kapalı (pasif)
   // gelir, yani varsayılan sınırsız katılım.
   newEventLimitedRow.hidden = !isGenel;
+  newEventMaxPerPurchaseRow.hidden = !isGenel;
   if(isFutbol){
     newEventStadiumNote.textContent = `Futbol Sahası için sabit ${STADIUM_BLOCKS.length} bloklu stadyum düzeni kullanılır.`;
   } else if(isGenel){
@@ -446,6 +447,7 @@ function openCreateEventModal(){
   newEventLimitedCheckbox.checked = false;
   newEventCapacityInput.value = '';
   newEventCapacityInput.hidden = true;
+  newEventMaxPerPurchaseInput.value = '';
   toggleNewEventDimsVisibility();
   createEventOverlay.hidden = false;
   newEventName.focus();
@@ -482,7 +484,7 @@ async function createEvent(){
   // general_capacity artık nullable — null demek "Sınırlı Bilet" kapalı,
   // yani sınırsız katılım (bkz. computeOccupancy/joinGeneralEvent). Diğer
   // venue türlerinde bu alan hiç okunmuyor, null geçilir.
-  let evCols, evRows, states, evTiers, evGeneralCapacity = null;
+  let evCols, evRows, states, evTiers, evGeneralCapacity = null, evMaxPerPurchase = null;
   if(vType === 'futbol'){
     evCols = STADIUM_BLOCKS.length;
     evRows = 1;
@@ -502,6 +504,14 @@ async function createEvent(){
       }
       evGeneralCapacity = cap;
     }
+    if(newEventMaxPerPurchaseInput.value){
+      const maxPer = Math.round(Number(newEventMaxPerPurchaseInput.value));
+      if(!Number.isFinite(maxPer) || maxPer < 1){
+        toast('Geçerli bir maksimum sayısı gir.');
+        return;
+      }
+      evMaxPerPurchase = maxPer;
+    }
     evCols = 1;
     evRows = 1;
     states = [0];
@@ -519,8 +529,9 @@ async function createEvent(){
       name, event_date: date, end_date: endDate, venue_type: vType,
       cols: evCols, rows: evRows, seat_states: encodeSeatStates(states),
       tiers: evTiers, general_capacity: evGeneralCapacity,
+      general_max_per_purchase: evMaxPerPurchase,
       poster_url: safeImageUrl(newEventPoster.value), status: 'active',
-      payment_methods: evPaymentMethods.length ? evPaymentMethods : ['kart', 'nakit'],
+      payment_methods: evPaymentMethods,
     }).select().single();
     if(error) throw error;
 

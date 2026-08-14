@@ -18,6 +18,7 @@ create table if not exists events (
   name text not null,
   event_date date,
   end_date date,
+  general_max_per_purchase int,
   venue_type text not null default 'sinema',
   cols int not null default 10,
   rows int not null default 8,
@@ -31,6 +32,7 @@ create table if not exists events (
 -- Tablo daha once (tiers sutunu olmadan) olusturulmus olabilir -- garanti olsun diye.
 alter table events add column if not exists tiers jsonb not null default '[]'::jsonb;
 alter table events add column if not exists end_date date;
+alter table events add column if not exists general_max_per_purchase int;
 
 -- Satis verisi (etkinlik basina): kimin hangi koltugu ne kadara, hangi
 -- odeme yontemiyle aldigi + bilet kodu/check-in durumu. Sadece Yonetici/

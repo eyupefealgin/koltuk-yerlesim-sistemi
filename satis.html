@@ -91,6 +91,10 @@
       <button class="btn btn-gold admin-only" id="createEventBtn" type="button">+ Yeni Etkinlik</button>
     </div>
   </div>
+  <div class="event-view-tabs">
+    <button class="mode-chip is-active" id="eventViewUpcoming" type="button">Yaklaşan</button>
+    <button class="mode-chip" id="eventViewPast" type="button">Geçmiş</button>
+  </div>
   <div class="event-filter-bar">
     <input type="text" id="eventFilterName" class="event-filter-name" maxlength="60" placeholder="Etkinlik ara...">
     <select id="eventFilterVenue">
@@ -164,6 +168,11 @@
       <div class="poster-row" id="generalCapacityInputRow">
         <input type="number" id="generalCapacityInput" min="1" step="1" placeholder="Toplam kişi sayısı">
         <button class="btn btn-primary btn-sm" id="saveGeneralCapacityBtn" type="button">Kaydet</button>
+      </div>
+      <span class="ticket-prices-label" style="margin-top:12px;display:block;">Tek Seferde Alınabilecek Maksimum:</span>
+      <div class="poster-row">
+        <input type="number" id="generalMaxPerPurchaseInput" min="1" step="1" placeholder="Sınırsız (boş bırakılabilir)">
+        <button class="btn btn-primary btn-sm" id="saveGeneralMaxPerPurchaseBtn" type="button">Kaydet</button>
       </div>
     </div>
 
@@ -341,6 +350,13 @@
     <h3 id="seatModalTitle">Koltuk</h3>
     <p class="hold-countdown" id="holdCountdown" hidden></p>
 
+    <div class="modal-step-panel" data-panel="quantity" hidden>
+      <p class="modal-subhead">Kaç Kişi Katılacak?</p>
+      <input type="number" id="generalQuantityInput" class="buyer-name-input" min="1" step="1" value="1">
+      <p class="buyer-note" id="generalQuantityNote"></p>
+      <button class="btn btn-primary" id="generalQuantityContinueBtn" type="button">Katıl</button>
+    </div>
+
     <div class="modal-step-panel" data-panel="tier">
       <p class="modal-subhead">1. Bilet Türü Seç</p>
       <div class="modal-choice-row" id="modalTierButtons"></div>
@@ -439,6 +455,10 @@
         <label class="dynamic-toggle"><input type="checkbox" id="newEventLimitedCheckbox"><span>Sınırlı Bilet</span></label>
         <input type="number" id="newEventCapacityInput" min="1" step="1" placeholder="Toplam kişi sayısı" hidden>
       </div>
+      <label class="field" id="newEventMaxPerPurchaseRow" hidden>
+        <span>Tek Seferde Alınabilecek Maksimum (opsiyonel)</span>
+        <input type="number" id="newEventMaxPerPurchaseInput" min="1" step="1" placeholder="Sınırsız">
+      </label>
       <div class="payment-method-row" id="newEventPaymentRow">
         <span class="ticket-prices-label">Ödeme Yöntemleri:</span>
         <label class="dynamic-toggle"><input type="checkbox" id="newEventPaymentKart" checked><span>Kart</span></label>

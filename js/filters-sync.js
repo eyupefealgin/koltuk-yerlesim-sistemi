@@ -248,6 +248,7 @@ function applySeatsPayload(row){
   GENERAL_CAPACITY = row.general_capacity === null
     ? Infinity
     : (Number(row.general_capacity) > 0 ? Number(row.general_capacity) : DEFAULT_GENERAL_CAPACITY);
+  GENERAL_MAX_PER_PURCHASE = Number(row.general_max_per_purchase) > 0 ? Number(row.general_max_per_purchase) : null;
   // İsmi buradan da yazıyoruz: paylaşılan bir linkle doğrudan girildiğinde
   // etkinlik listesi henüz yüklenmemiş oluyor ve başlık boş kalıyordu.
   // (Yönetici etkinliği yeniden adlandırırsa da bu sayede anında güncellenir.)
@@ -268,6 +269,7 @@ function applySeatsPayload(row){
   renderPosterEditor();
   renderNoteEditor();
   renderEndDateEditor();
+  renderGeneralMaxPerPurchaseEditor();
   renderPaymentMethodsEditor();
   renderDynamicPricingEditor();
 
@@ -420,9 +422,9 @@ function isPastEvent(ev){
 }
 
 // Etkinlik listesi görünüm sekmesi — Yaklaşan (varsayılan) / Geçmiş /
-// Favorilerim. Sadece misafir sayfasında (index.html) sekmeleri var;
-// personel sayfalarında elemanlar null olduğu için hepsi ?. ile erişiliyor,
-// eventViewMode her zaman 'upcoming' kalır (personel her şeyi görür).
+// Favorilerim. Personel sayfalarında (satis.html/yonetici.html) sadece
+// Yaklaşan/Geçmiş var, Favorilerim misafire özel — elemanlar orada null
+// olduğu için hepsi ?. ile erişiliyor.
 let eventViewMode = 'upcoming';
 const eventViewUpcomingBtn = document.getElementById('eventViewUpcoming');
 const eventViewPastBtn = document.getElementById('eventViewPast');

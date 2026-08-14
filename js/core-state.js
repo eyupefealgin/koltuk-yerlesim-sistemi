@@ -136,6 +136,7 @@ function isPooledMode(){
 // kapasite — admin sonradan kapasite alanından değiştirebilir.
 const DEFAULT_GENERAL_CAPACITY = 500;
 let GENERAL_CAPACITY = DEFAULT_GENERAL_CAPACITY; // geçerli etkinliğin kapasitesi (events.general_capacity)
+let GENERAL_MAX_PER_PURCHASE = null; // tek seferde katılınabilecek maksimum kişi — null = sınırsız (events.general_max_per_purchase)
 
 // Havuzlu moddaki "blok" listesi: futbolda sabit stadyum şeması (fiyatlı,
 // bilet türüne göre), Genel Etkinlik'te ise tek bir ücretsiz giriş havuzu.

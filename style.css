@@ -41,7 +41,7 @@
   /* Metin — parşömen tonlu kırık beyaz */
   --text: #EAE3D2;
   --text-secondary: #9C9483;
-  --text-muted: #877F6E;
+  --text-muted: #A39A87;
   --text-bright: #F5EFDE;
 
   /* Vurgu — mat pirinç (brass). Parlak/gradyan altın değil, düz metal
@@ -130,6 +130,11 @@
 
 /* ===== Reset & Base ===== */
 *{ box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Taban font boyutu 16px yerine 17px — sitedeki tüm rem tabanlı boyutlar
+   (metin, boşluk, ikon) orantılı şekilde biraz büyüyüp okunabilirliği
+   artırıyor, hiçbir bileşenin göreli oranı bozulmuyor. */
+html{ font-size: 17px; }
 
 body{
   font-family: var(--font);
@@ -1367,6 +1372,7 @@ select option{
   justify-content: center;
   padding: 20px;
   z-index: 50;
+  overflow-y: auto;
   animation: overlay-in .18s ease;
 }
 .modal-overlay[hidden]{ display: none; }
@@ -1376,6 +1382,8 @@ select option{
   position: relative;
   width: 100%;
   max-width: 400px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--surface-raised);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
@@ -1383,6 +1391,11 @@ select option{
   box-shadow: var(--shadow-lg);
   text-align: center;
   animation: fadeInScale .22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* .modal-overlay zaten dikeyde ortalıyor (align-items:center) — içerik
+     görünür yükseklikten uzunsa modal kendi içinde kayar, üstteki kapatma
+     çarpısı ve altındaki butonlar hep erişilebilir kalır (bkz. my-ticket-
+     history gibi uzun listeler). */
+  margin: auto;
 }
 
 .modal-close{
@@ -1758,7 +1771,11 @@ select option{
 
 .my-ticket-history{ margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); text-align: left; }
 .my-ticket-history[hidden]{ display: none; }
-.my-ticket-history-list{ display: flex; flex-direction: column; gap: 6px; }
+.my-ticket-history-list{
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 280px; overflow-y: auto;
+  padding-right: 4px; /* kaydırma çubuğu son öğenin üstüne binmesin */
+}
 .my-ticket-history-item{
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
   padding: 8px 12px; border-radius: var(--radius-sm); background: var(--tint);
@@ -1766,7 +1783,7 @@ select option{
 }
 .my-ticket-history-item:hover{ background: var(--gold-subtle); }
 .my-ticket-history-item .hist-event{ font-weight: 700; color: var(--text-bright); }
-.my-ticket-history-item .hist-seat{ color: var(--text-muted); font-size: .78rem; }
+.my-ticket-history-item .hist-seat{ color: var(--text-muted); font-size: .82rem; }
 
 /* Afiş görseli artık program satırında küçük bir küçük resim (bkz.
    .program-poster, PROGRAM LİSTESİ bölümünde tanımlı) — eski full-bleed

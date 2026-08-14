@@ -25,11 +25,13 @@ function renderModalTierButtons(){
       : `${tier.label} (${price}₺)`;
     btn.addEventListener('click', () => {
       modalTier = tier.id;
-      // Giriş yapmış misafirin ad soyadı zaten kayıt sırasında alındı
-      // (bkz. auth.js verifiedName) — burada tekrar sorulmuyor, doğrudan
-      // ödeme adımına geçiliyor.
-      if(currentRole === 'guest' && verifiedName){
-        proceedToPayment(verifiedName, verifiedEmail || '');
+      // Giriş yapmış misafirin ad soyadı zaten kayıt sırasında alındı (bkz.
+      // auth.js verifiedName); giriş yapmamış misafirin adı da bu cihazda
+      // daha önce bilet aldıysa hatırlanıyor (bkz. rememberedGuestBuyerInfo)
+      // — ikisinde de tekrar sorulmuyor, doğrudan ödeme adımına geçiliyor.
+      const knownGuest = verifiedName ? { name: verifiedName, email: verifiedEmail || '' } : rememberedGuestBuyerInfo();
+      if(currentRole === 'guest' && knownGuest){
+        proceedToPayment(knownGuest.name, knownGuest.email || '');
         return;
       }
       buyerNameInput.value = '';
@@ -383,8 +385,9 @@ async function openBlockSeatModal(pos){
 // gösterilmiyor (bkz. openSeatModal'daki aynı yaklaşım).
 function openBuyerPanelForBlockSeat(){
   modalGender = 'male';
-  if(currentRole === 'guest' && verifiedName){
-    proceedToPayment(verifiedName, verifiedEmail || '');
+  const knownGuest = verifiedName ? { name: verifiedName, email: verifiedEmail || '' } : rememberedGuestBuyerInfo();
+  if(currentRole === 'guest' && knownGuest){
+    proceedToPayment(knownGuest.name, knownGuest.email || '');
     return;
   }
   buyerNameInput.value = '';
@@ -542,8 +545,10 @@ async function finalizeBlockBulkPurchase(payment){
 // alıcı bilgisi, ödeme yöntemi, QR/bilet kodu YOK. Tek tıkla katılım,
 // kapasite kontrolü purchase_stadium_block RPC'sinde atomik yapılıyor
 // (p_sales boş dizi geçiliyor — kişisel bir kayıt tutulmuyor, sadece sayaç
-// artıyor). Modal hiç açılmıyor, doğrudan confirm() ile onay alınıyor.
-async function joinGeneralEvent(){
+// artıyor). Kaç kişi katılacağı generalQuantityInput panelinde soruluyor
+// (bkz. generalQuantityContinueBtn) — admin bir üst sınır da koymuş olabilir
+// (GENERAL_MAX_PER_PURCHASE, bkz. renderGeneralMaxPerPurchaseEditor).
+function joinGeneralEvent(){
   const block = poolBlocks()[0];
   const sold = blockSoldCount(0);
   const remaining = block.capacity - sold; // Infinity - sold = Infinity, hiç dolmaz
@@ -552,21 +557,53 @@ async function joinGeneralEvent(){
     toast('Bu etkinlik dolu.');
     return;
   }
-  const confirmText = block.capacity === Infinity
-    ? `${sold} katıldı — sınırsız katılım. Katılmak istiyor musun?`
-    : `${sold}/${block.capacity} katıldı — ${remaining} yer kaldı. Katılmak istiyor musun?`;
-  if(!confirm(confirmText)) return;
+
+  const capNote = GENERAL_MAX_PER_PURCHASE ? `Tek seferde en fazla ${GENERAL_MAX_PER_PURCHASE} kişi.` : '';
+  const remainingNote = Number.isFinite(remaining) ? `${remaining} yer kaldı.` : 'Sınırsız katılım.';
+  generalQuantityNote.textContent = [remainingNote, capNote].filter(Boolean).join(' ');
+  generalQuantityInput.value = 1;
+  generalQuantityInput.min = 1;
+  const maxAllowed = Math.min(Number.isFinite(remaining) ? remaining : Infinity, GENERAL_MAX_PER_PURCHASE || Infinity);
+  generalQuantityInput.max = Number.isFinite(maxAllowed) ? maxAllowed : '';
+
+  seatModalTitle.textContent = 'Genel Giriş';
+  holdCountdownEl.hidden = true;
+  showModalPanel('quantity');
+  seatModalOverlay.hidden = false;
+  generalQuantityInput.focus();
+}
+
+generalQuantityContinueBtn.addEventListener('click', async () => {
+  const block = poolBlocks()[0];
+  const sold = blockSoldCount(0);
+  const remaining = block.capacity - sold;
+  const quantity = Math.round(Number(generalQuantityInput.value));
+
+  if(!Number.isFinite(quantity) || quantity < 1){
+    toast('Geçerli bir sayı gir.');
+    return;
+  }
+  if(GENERAL_MAX_PER_PURCHASE && quantity > GENERAL_MAX_PER_PURCHASE){
+    toast(`Tek seferde en fazla ${GENERAL_MAX_PER_PURCHASE} kişi katılabilir.`);
+    return;
+  }
+  if(Number.isFinite(remaining) && quantity > remaining){
+    toast(`Sadece ${remaining} yer kaldı.`);
+    return;
+  }
 
   if(currentRole !== 'guest'){
-    seatStates[0] = sold + 1;
+    seatStates[0] = sold + quantity;
     if(seatButtons[0]) renderSeatVisual(seatButtons[0], 0);
     updateStats();
     pushSeatStates();
+    closeSeatModal();
     toast('Katılım kaydedildi.');
     return;
   }
 
   if(!currentEventId) return;
+  generalQuantityContinueBtn.disabled = true;
   try {
     // p_capacity SQL'de int — Infinity JSON'a serileşirken null'a döner ve RPC
     // "her zaman dolu" gibi davranırdı (bkz. purchase_stadium_block'taki
@@ -574,20 +611,23 @@ async function joinGeneralEvent(){
     // (pratikte hiç ulaşılamayacak bir tavan) gönderiyoruz.
     const capacityParam = Number.isFinite(block.capacity) ? block.capacity : 2147483647;
     const { error } = await supabaseClient.rpc('purchase_stadium_block', {
-      p_event_id: currentEventId, p_idx: 0, p_quantity: 1, p_capacity: capacityParam, p_sales: [], p_token: holdToken,
+      p_event_id: currentEventId, p_idx: 0, p_quantity: quantity, p_capacity: capacityParam, p_sales: [], p_token: holdToken,
     });
     if(error) throw error;
 
-    seatStates[0] = sold + 1;
+    seatStates[0] = sold + quantity;
     if(seatButtons[0]) renderSeatVisual(seatButtons[0], 0);
     updateStats();
+    closeSeatModal();
     toast('Katılımın kaydedildi!');
   } catch(err){
     console.warn('Katılım kaydedilemedi.', err);
     const msg = (err && err.message) || '';
     toast(msg.includes('CAPACITY_EXCEEDED') ? 'Üzgünüz, etkinlik az önce doldu.' : 'Katılım kaydedilemedi — buluta bağlanılamadı.');
+  } finally {
+    generalQuantityContinueBtn.disabled = false;
   }
-}
+});
 
 function updatePaymentButtonsEnabled(){
   const needsConsent = !legalConsentRow.hidden;
@@ -603,6 +643,7 @@ function proceedToPayment(name, email){
   modalBuyerName = name;
   modalBuyerEmail = email;
   const isGuest = currentRole === 'guest';
+  if(isGuest && name) rememberGuestBuyerInfo(name, email);
   paymentDisclaimerEl.hidden = !isGuest;
   legalConsentRow.hidden = !isGuest;
   legalConsentCheckbox.checked = false;
@@ -625,6 +666,9 @@ buyerContinueBtn.addEventListener('click', () => {
 legalConsentCheckbox.addEventListener('change', updatePaymentButtonsEnabled);
 buyerNameInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); buyerContinueBtn.click(); }
+});
+generalQuantityInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); generalQuantityContinueBtn.click(); }
 });
 
 // İndirim kodu: redeem_discount_code() atomik olarak kullanım sayacını
